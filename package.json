@@ -16,6 +16,7 @@
     "test:vercel": "node --test tests/vercel/function.test.mjs"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.0.2",
     "dotenv": "17.4.2",
     "express": "5.2.1",
     "lucide-react": "1.44.0",
@@ -23,6 +24,7 @@
     "react-dom": "19.3.0",
     "recharts": "3.10.1",
     "tsx": "4.23.13",
+    "ws": "^8.18.3",
     "zod": "4.6.1"
   },
   "devDependencies": {
@@ -31,13 +33,14 @@
     "@types/node": "22.20.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "@types/ws": "^8.5.13",
     "@vitejs/plugin-react": "6.1.1",
     "concurrently": "10.0.5",
+    "esbuild": "0.28.2",
     "prettier": "3.9.6",
     "typescript": "7.0.2",
     "vite": "8.3.0",
-    "vitest": "5.0.0",
-    "esbuild": "0.28.2"
+    "vitest": "5.0.0"
   },
   "engines": {
     "node": "24.x"

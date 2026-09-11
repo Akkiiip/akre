@@ -7,7 +7,7 @@ A working production foundation built on the original AKRE React/Vite MVP.
 ## Implemented
 
 - Preserved sidebar, typography, operational layout and product intelligence panel; all eight modules now load working surfaces.
-- Typed domain models; persistent SQLite-backed API with server validation and owner access gate.
+- Typed domain models; persistent SQLite (local/DEMO) and PostgreSQL (Vercel LIVE) API storage with server validation and owner access gate.
 - Radar and product catalogue with search, category/lifecycle filters, sorting, explicit missing evidence and source provenance.
 - Deterministic versioned scoring, component explanations and coverage confidence.
 - Contribution economics with editable assumptions, break-even price and maximum allowable acquisition cost.

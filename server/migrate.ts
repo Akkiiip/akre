@@ -1,5 +1,5 @@
-import type { Repository } from "./database";
-export function migrateIdentityAndScores(repo: Repository) {
+import type { SqliteRepository } from "./database";
+export function migrateIdentityAndScores(repo: SqliteRepository) {
   repo.transaction(() => {
     if (
       repo.db

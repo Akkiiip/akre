@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { Repository } from "./database";
+import type { RepositoryContract } from "./repository";
 import { economics } from "../shared/economics";
 import { assertTransition } from "../shared/lifecycle";
 import { discover, identityKey, deduplicate } from "../shared/discovery";
@@ -59,7 +59,7 @@ const criteria = z
   .strict();
 export class Service {
   constructor(
-    public repo: Repository,
+    public repo: RepositoryContract,
     public shopify: ShopifyProvider,
     public youtube: YouTubeProvider,
     public wikimedia = new WikimediaProvider(),

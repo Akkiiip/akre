@@ -24,21 +24,22 @@ The package pins `engines.node` to `24.x`; the emitted runtime manifest also pin
 
 The lightweight handler lazily loads the bundled runtime and caches one initialization promise per process. Concurrent first requests share that promise. Failed initialization clears it so a later request can retry; failures return sanitized JSON 503 with a diagnostic code, never a false healthy response. Server logs include the stage/code and Node version without credentials or full request bodies. Runtime database resources close on failed initialization. SQLite seeding and migration version checks run under write transactions; migrations and append-only triggers commit together.
 
-Vercel supports **DEMO only** in this adapter. `/tmp/akre.sqlite` is real SQLite but ephemeral, instance-local storage. Warm requests can retain changes, but instances do not share a durable database and cold starts/redeployments can reset data. Both `/api/state` and the UI identify this explicitly. The health response reports ephemeral storage and `durable: false`.
+Vercel DEMO uses `/tmp/akre.sqlite`, which is real SQLite but ephemeral and instance-local. Warm requests can retain changes, but instances do not share durable data and cold starts or redeployments can reset it. `/api/state`, the UI, and health all identify DEMO as ephemeral with `durable: false`.
 
-`AKRE_MODE=LIVE` is rejected with `DURABLE_BACKEND_REQUIRED`. This does not remove local LIVE support or change existing persisted Wikimedia data. A LIVE Vercel deployment needs a durable external database/backend and a durable worker architecture; neither is fabricated here. Bounded internal DEMO jobs finish in their request, without background timers. External jobs stay blocked in DEMO.
+Vercel LIVE requires `DATABASE_URL` and uses PostgreSQL only. It never falls back to SQLite or `/tmp`; missing configuration returns a sanitized `DATABASE_URL_REQUIRED` error. LIVE begins empty and has no synthetic seed. Bounded job execution happens within an explicit API request; persistent workers and timers are not assumed in the serverless runtime.
 
 ## Environment audit
 
 | Variable                                                 | Vercel DEMO behavior                                                                                                                                     |
 | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AKRE_MODE                                                | Unset or DEMO; LIVE rejected explicitly.                                                                                                                 |
-| DATABASE_PATH                                            | Unset defaults to OS temporary directory/akre.sqlite. A temporary file or :memory: is allowed; project/read-only paths rejected.                         |
+| AKRE_MODE                                                | Unset or DEMO for temporary hosted DEMO. LIVE requires the production configuration below.                                                               |
+| DATABASE_PATH                                            | DEMO only: unset defaults to OS temporary directory/akre.sqlite. LIVE ignores it and never uses SQLite.                                                  |
 | AKRE_ADMIN_PASSWORD                                      | Optional for the existing public DEMO; if supplied, at least 16 characters. Authentication is enforced when configured.                                  |
 | AKRE_SESSION_SECRET                                      | Required at 32+ characters when password protection is enabled; keeps sessions valid across instances.                                                   |
 | PUBLIC_ORIGIN                                            | Optional; if supplied, exact HTTPS origin without trailing slash. Otherwise requests must match the current HTTPS host. Cookies remain Secure in Vercel. |
-| SHOPIFY_SHOP / SHOPIFY_ADMIN_TOKEN / SHOPIFY_API_VERSION | Not required or used by this isolated DEMO adapter; Shopify remains NOT CONFIGURED. Local LIVE adapter unchanged.                                        |
-| YOUTUBE_API_KEY                                          | Not required or used by the isolated DEMO adapter.                                                                                                       |
+| DATABASE_URL                                            | Not needed in DEMO. Required in LIVE; a server-side PostgreSQL/Neon connection string.                                                                   |
+| SHOPIFY_SHOP / SHOPIFY_ADMIN_TOKEN / SHOPIFY_API_VERSION | Not required in DEMO. Optional in LIVE; missing values leave Shopify NOT CONFIGURED.                                                                      |
+| YOUTUBE_API_KEY                                          | Not required in DEMO. Optional in LIVE; missing value leaves YouTube NOT CONFIGURED.                                                                     |
 
 Do not copy the local `.env.example` DATABASE_PATH or localhost PUBLIC_ORIGIN into Vercel. No credentials belong in VITE_* variables or committed files. Hosted password protection is not silently bypassed; incomplete authentication configuration returns JSON 503.
 
@@ -60,6 +61,28 @@ Native function tests copy the generated CJS file into an isolated temporary dir
 
 ## Existing Vercel project
 
-Deploy the new main commit on the **existing** project. Repository configuration supplies the build command and output; no new project/domain is needed. Use Node 24, AKRE_MODE=DEMO, and unset DATABASE_PATH (or use /tmp/akre.sqlite). Remove a localhost PUBLIC_ORIGIN or set the actual HTTPS production origin. Keep any configured password and session secret. Verify `/api/health` returns JSON 200 with DEMO/ephemeral, `/api/state` returns JSON 200 (or expected 401 before login), and `/radar` reloads directly.
+Deploy the new main commit on the **existing** project. Repository configuration supplies the build command and output; no new project/domain is needed. For hosted DEMO use Node 24, AKRE_MODE=DEMO, and unset DATABASE_PATH (or use /tmp/akre.sqlite). For LIVE use the PostgreSQL configuration below and do not set DATABASE_PATH. Remove a localhost PUBLIC_ORIGIN or set the actual HTTPS production origin. Verify `/api/health` returns JSON 200 with the expected mode and durable flag, `/api/state` returns JSON 200 (or expected 401 before login), and `/radar` reloads directly.
 
 References: [Vercel Build Output API](https://vercel.com/docs/build-output-api), [function primitives](https://vercel.com/docs/build-output-api/primitives), [supported Node versions](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions).
+
+## Durable LIVE readiness
+
+AKRE now includes a PostgreSQL repository using the official Neon serverless driver. It preserves the existing compact `workspaces` and JSONB `records` model, so local SQLite and the typed service contract remain intact. PostgreSQL bootstrap is idempotent: migration 1 creates the durable schema and index; migration 2 adds append-only database triggers for audit events and score snapshots.
+
+Vercel DEMO remains temporary SQLite and synthetic. Vercel LIVE requires `DATABASE_URL`; it uses PostgreSQL only, begins a real transaction, serializes the default workspace with an advisory lock, and commits changes before the API response completes. LIVE starts with an empty workspace and never falls back to SQLite or `/tmp`.
+
+LIVE configuration required in the existing Vercel project:
+
+```
+AKRE_MODE=LIVE
+DATABASE_URL=postgresql://...  # Vercel server-side secret
+AKRE_ADMIN_PASSWORD=<16+ character secret>
+AKRE_SESSION_SECRET=<32+ character secret>
+PUBLIC_ORIGIN=https://<existing-akre-domain>
+```
+
+`GET /api/health` reports `mode: LIVE`, `storage: postgres`, and `durable: true` only after database initialization succeeds. It never returns a connection URL or secret. Do not set `DATABASE_PATH` for LIVE.
+
+In Vercel, jobs are explicit API-triggered bounded operations and are awaited in that request. There is no interval, background process, or filesystem persistence assumption. Long-running scheduled work needs a dedicated cron/worker after credentials and execution limits are verified.
+
+Configured Shopify and YouTube providers initialize only on the server; absent credentials remain `NOT CONFIGURED`. Wikimedia remains topic attention evidence and never supplies purchase demand, supplier cost, or profitability. Supplier quotes stay operator-entered until a real connector exists. No durable database has been connected or verified by this repository change.

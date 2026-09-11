@@ -13,6 +13,8 @@ export function createApp(
     origin?: string;
     staticDir?: string;
     serverlessDemo?: boolean;
+    serverlessLive?: boolean;
+    executeJobsInline?: boolean;
   } = {},
 ) {
   const app = express();
@@ -90,7 +92,9 @@ export function createApp(
       mode: service.repo.mode,
       ...(config.serverlessDemo
         ? { runtime: "nodejs24.x", storage: "ephemeral", durable: false }
-        : {}),
+        : config.serverlessLive
+          ? { runtime: "nodejs24.x", storage: "postgres", durable: true }
+          : {}),
     }),
   );
   app.use("/api", (req, res, next) => {
@@ -129,7 +133,15 @@ export function createApp(
                 "Vercel DEMO: temporary instance-local data. Changes can reset and are not shared across instances.",
             },
           }
-        : {}),
+        : config.serverlessLive
+          ? {
+              storage: {
+                kind: "postgres",
+                durable: true,
+                notice: "LIVE: durable PostgreSQL storage.",
+              },
+            }
+          : {}),
       data: service.repo.snapshot(),
       integrations: service.integrations(),
     }),
@@ -155,7 +167,7 @@ export function createApp(
   app.post("/api/jobs", async (req, res) => {
     const job = service.enqueue(req.body);
     // DEMO jobs are bounded local calculations; finish before serverless suspension.
-    if (config.serverlessDemo) await service.runNext();
+    if (config.executeJobsInline) await service.runNext();
     res.status(202).json(service.repo.get("jobs", job.id));
   });
   app.post("/api/jobs/:id/retry", (req, res) =>
@@ -194,15 +206,13 @@ export function createApp(
               : "REQUEST_REJECTED",
           }),
         );
-        res
-          .status(parseError ? 400 : unexpected ? 500 : 400)
-          .json({
-            error: parseError
-              ? "Invalid JSON request"
-              : unexpected
-                ? "Backend request failed. Check server logs."
-                : "Request rejected. Check the input, lifecycle state and integration configuration.",
-          });
+        res.status(parseError ? 400 : unexpected ? 500 : 400).json({
+          error: parseError
+            ? "Invalid JSON request"
+            : unexpected
+              ? "Backend request failed. Check server logs."
+              : "Request rejected. Check the input, lifecycle state and integration configuration.",
+        });
         return;
       }
       const message =

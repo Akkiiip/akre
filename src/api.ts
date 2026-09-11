@@ -1,7 +1,11 @@
 import type { Dataset, DataMode } from "../shared/domain";
 export interface AppState {
   mode: DataMode;
-  storage?: { kind: "ephemeral"; durable: false; notice: string };
+  storage?: {
+    kind: "ephemeral" | "postgres";
+    durable: boolean;
+    notice: string;
+  };
   data: Dataset;
   integrations: {
     provider: string;

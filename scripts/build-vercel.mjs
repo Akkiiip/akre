@@ -16,6 +16,10 @@ const result = await build({
   metafile: true,
   sourcemap: false,
   logLevel: "info",
+  alias: {
+    bufferutil: "./scripts/optional-native.cjs",
+    "utf-8-validate": "./scripts/optional-native.cjs",
+  },
 });
 // A missing server file must fail the build, not the first production request.
 const builtins = new Set(

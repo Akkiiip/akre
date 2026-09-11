@@ -344,7 +344,7 @@ function App() {
               {state.mode === "DEMO"
                 ? (state.storage?.notice ??
                   "Demonstration workspace. Product signals and cost assumptions are sample data. Saved changes remain in the demo database.")
-                : "Production workspace. LIVE labels require retrieved source evidence. Manual assumptions and missing data are identified separately."}
+                : `${state.storage?.notice ?? "Production workspace."} LIVE labels require retrieved source evidence. Manual assumptions and missing data are identified separately.`}
             </span>
           </div>
         )}
