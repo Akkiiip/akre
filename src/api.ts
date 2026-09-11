@@ -30,8 +30,31 @@ export async function api<T = unknown>(
     headers: body === undefined ? {} : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const data = await response.json();
-  if (!response.ok)
-    throw new ApiError(data.error ?? "Request failed", response.status);
-  return data;
+
+  const contentType = response.headers.get("content-type") ?? "";
+  const raw = await response.text();
+  let data: any = null;
+
+  if (raw && contentType.includes("application/json")) {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = null;
+    }
+  }
+
+  if (!response.ok) {
+    const fallback = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    throw new ApiError(
+      data?.error ?? fallback.slice(0, 240) || `Request failed (${response.status})`,
+      response.status,
+    );
+  }
+
+  if (data !== null) return data as T;
+
+  throw new ApiError(
+    `API returned an unexpected response (${response.status})`,
+    response.status,
+  );
 }
