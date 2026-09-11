@@ -17,8 +17,8 @@ const result = await build({
   sourcemap: false,
   logLevel: "info",
   alias: {
-    bufferutil: "./scripts/optional-native.cjs",
-    "utf-8-validate": "./scripts/optional-native.cjs",
+    bufferutil: "./scripts/optional-bufferutil.cjs",
+    "utf-8-validate": "./scripts/optional-utf-8-validate.cjs",
   },
 });
 // A missing server file must fail the build, not the first production request.
