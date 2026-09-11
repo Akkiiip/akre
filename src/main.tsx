@@ -34,6 +34,14 @@ import { analytics } from "../shared/analytics";
 import { api, ApiError, type AppState } from "./api";
 import "./styles.css";
 import "./production.css";
+import {
+  SourceIngestion,
+  ShopifySettings,
+  ShopifyListingActions,
+  OpportunityEvidence,
+} from "./LiveControls";
+import { evidenceState } from "../shared/evidence";
+import { experimentAnalytics } from "../shared/experiment-analytics";
 import { ProductCreate, OfferCreate, VariantCreate } from "./CatalogueTools";
 const nav = [
   ["Radar", Zap],
@@ -268,7 +276,13 @@ function App() {
             <div className="livehead">
               <b>Workspace data</b>
             </div>
-            <Status value={state?.mode ?? "LOADING"} />
+            <Status
+              value={
+                state?.mode === "LIVE"
+                  ? "PRODUCTION"
+                  : (state?.mode ?? "LOADING")
+              }
+            />
             <p>
               {state?.mode === "DEMO"
                 ? "Sample records · no external activity"
@@ -325,11 +339,11 @@ function App() {
         </header>
         {state && (
           <div className={`modeBanner ${state.mode.toLowerCase()}`}>
-            <Status value={state.mode} />
+            <Status value={state.mode === "LIVE" ? "PRODUCTION" : "DEMO"} />
             <span>
               {state.mode === "DEMO"
                 ? "Demonstration workspace. Product signals and cost assumptions are sample data. Saved changes remain in the demo database."
-                : "Live workspace. Missing evidence remains “Insufficient data”. Connection status does not imply a successful sync."}
+                : "Production workspace. LIVE labels require retrieved source evidence. Manual assumptions and missing data are identified separately."}
             </span>
           </div>
         )}
@@ -506,11 +520,18 @@ function Catalogue({
           title={
             page === "Radar" ? "Ranked opportunities" : "Operating catalogue"
           }
-          aside={<Status value={d.products[0]?.mode ?? "LIVE"} />}
+          aside={
+            <Status
+              value={
+                d.products[0]?.mode === "DEMO" ? "DEMO" : "SOURCE EVIDENCE"
+              }
+            />
+          }
         >
           <Table
             heads={[
               "Product",
+              "Source state",
               "AKRE score",
               "Trend index",
               "Demand",
@@ -547,6 +568,9 @@ function Catalogue({
                         </small>
                       </span>
                     </button>
+                  </td>
+                  <td>
+                    <Status value={evidenceState(p, d)} />
                   </td>
                   <td className="score">{number(o?.scoring.score)}</td>
                   <td>{number(o?.inputs.trendAcceleration)}</td>
@@ -717,6 +741,7 @@ function ProductDetail({
         {tab === "Evidence" && (
           <>
             <h3>Source → observation → signal → score</h3>
+            <OpportunityEvidence p={p} d={d} mutate={mutate} />
             <p className="help">
               {p.mode === "DEMO"
                 ? "Synthetic fixture inputs. No external market evidence has been collected."
@@ -761,6 +786,8 @@ function ProductDetail({
             <EconomicsForm
               key={cost.updatedAt}
               initial={cost.assumptions}
+              offers={d.offers.filter((o) => o.productId === p.id)}
+              initialOfferId={cost.supplierOfferId}
               onSave={(inputs) =>
                 mutate(
                   `/products/${p.id}/economics`,
@@ -772,6 +799,7 @@ function ProductDetail({
             />
           ) : (
             <EconomicsForm
+              offers={d.offers.filter((o) => o.productId === p.id)}
               initial={{
                 sellingPrice: 0,
                 productCost: 0,
@@ -893,13 +921,20 @@ const costLabels: Record<keyof EconomicsInputs, string> = {
   otherVariableCosts: "Other variable costs",
 };
 function EconomicsForm({
+  offers = [],
+  initialOfferId = null,
   initial,
   onSave,
 }: {
+  offers?: Dataset["offers"];
+  initialOfferId?: string | null;
   initial: EconomicsInputs;
-  onSave: (i: EconomicsInputs) => Promise<boolean>;
+  onSave: (
+    i: EconomicsInputs & { supplierOfferId?: string | null },
+  ) => Promise<boolean>;
 }) {
   const [inputs, setInputs] = useState(initial);
+  const [offerId, setOfferId] = useState(initialOfferId);
   let result: ReturnType<typeof economics> | null = null;
   try {
     result = economics(inputs);
@@ -910,7 +945,7 @@ function EconomicsForm({
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (result) void onSave(inputs);
+        if (result) void onSave({ ...inputs, supplierOfferId: offerId });
       }}
     >
       <p className="help">
@@ -918,6 +953,29 @@ function EconomicsForm({
         freight/duties allocated per unit. Explicit zero assumptions must be
         reviewed before a real test.
       </p>
+      <Field label="Supplier quote for economics">
+        <select
+          value={offerId ?? ""}
+          onChange={(e) => {
+            const chosen = offers.find((o) => o.id === e.target.value);
+            setOfferId(chosen?.id ?? null);
+            if (chosen && chosen.shippingCost !== null)
+              setInputs({
+                ...inputs,
+                productCost: chosen.unitCost,
+                shipping: chosen.shippingCost,
+              });
+          }}
+        >
+          <option value="">Manual assumptions</option>
+          {offers.map((o) => (
+            <option key={o.id} value={o.id} disabled={o.shippingCost === null}>
+              {o.sku || o.id} · {money(o.unitCost)} + {money(o.shippingCost)}{" "}
+              shipping · operator entered
+            </option>
+          ))}
+        </select>
+      </Field>
       <div className="formGrid">
         {(Object.keys(inputs) as (keyof EconomicsInputs)[]).map((k) => (
           <Field key={k} label={costLabels[k]}>
@@ -1016,9 +1074,17 @@ function OfferTable({
               <b>{d.products.find((p) => p.id === o.productId)?.name}</b>
               <small>
                 {d.suppliers.find((s) => s.id === o.supplierId)?.name}
+                <span>
+                  {" "}
+                  · {o.mode === "DEMO" ? "DEMO" : "MANUAL"} ·{" "}
+                  {o.source ?? "Operator entered"}
+                  {Date.now() - Date.parse(o.lastChecked) > 14 * 86400000
+                    ? " · STALE"
+                    : ""}
+                </span>
               </small>
             </td>
-            <td>{o.variantId ?? "Unspecified"}</td>
+            <td>{o.sku || o.variantId || "Unspecified"}</td>
             <td>{o.moq}</td>
             <td>{money(o.unitCost)}</td>
             <td>{money(o.shippingCost)}</td>
@@ -1540,18 +1606,17 @@ function StorePage({
               content only after the external API succeeds.
             </p>
             <p>
-              Planned prices stay in AKRE until a remote variant is mapped.
-              Publishing and inventory methods require explicit remote IDs;
-              operator controls are planned.
+              Import Shopify products in Settings, then edit content or
+              synchronize a confirmed variant’s price and inventory below.
+              Inventory uses compare-and-set protection; publication controls
+              remain separate.
             </p>
             <p>
               Credentials stay on the server. Demo workspaces cannot call
               external providers.
             </p>
             <button
-              disabled={
-                state.mode === "DEMO" || integration?.status !== "CONNECTED"
-              }
+              disabled={state.mode === "DEMO" || !integration?.configured}
               onClick={() =>
                 void mutate(
                   "/jobs",
@@ -1595,12 +1660,16 @@ function StorePage({
                 </td>
                 <td>{l.externalId ?? "Not created"}</td>
                 <td>{l.lastSyncedAt ? date(l.lastSyncedAt) : "Never"}</td>
-                <td>{l.publishedAt ? "Published" : "Unpublished"}</td>
+                <td>
+                  {l.remoteStatus
+                    ? `Shopify ${l.remoteStatus} (channel publication unverified)`
+                    : "Unpublished draft"}
+                </td>
                 <td>
                   <button
                     disabled={
                       state.mode === "DEMO" ||
-                      integration?.status !== "CONNECTED" ||
+                      !integration?.configured ||
                       l.status === "SYNCING" ||
                       l.status === "ERROR"
                     }
@@ -1624,6 +1693,16 @@ function StorePage({
             ))}
           </Table>
           {!d.listings.length && <Empty>No listings prepared.</Empty>}
+          {d.listings.map((l) => (
+            <ShopifyListingActions
+              key={l.id}
+              listing={l}
+              enabled={
+                state.mode === "LIVE" && Boolean(integration?.configured)
+              }
+              mutate={mutate}
+            />
+          ))}
         </Panel>
       </div>
     </>
@@ -1641,6 +1720,12 @@ function Analytics({ d }: { d: Dataset }) {
             .toISOString()
             .slice(0, 10);
   const a = analytics(d.orders, d.metrics, start, end);
+  const experimentSummary = experimentAnalytics(
+    d.experiments,
+    d.metrics,
+    start,
+    end,
+  );
   return (
     <>
       <div className="toolbar">
@@ -1695,6 +1780,49 @@ function Analytics({ d }: { d: Dataset }) {
               note="Requires attribution and session tracking"
             />
           </div>
+          <Panel title="Recorded experiment performance">
+            {experimentSummary.hasMetrics ? (
+              <>
+                <p className="sectionIntro">
+                  Operator-entered daily metrics. Purchases are experiment
+                  reports, not additional Shopify orders; revenue is not
+                  combined with store totals.
+                </p>
+                <div className="metrics">
+                  <Metric
+                    label="Reported purchases"
+                    value={number(experimentSummary.purchases)}
+                  />
+                  <Metric
+                    label="Recorded experiment revenue"
+                    value={money(experimentSummary.revenue)}
+                  />
+                  <Metric
+                    label="Recorded experiment spend"
+                    value={money(experimentSummary.spend)}
+                  />
+                  <Metric
+                    label="Experiment ROAS"
+                    value={number(experimentSummary.roas)}
+                  />
+                  <Metric
+                    label="Experiment conversion rate"
+                    value={percent(experimentSummary.conversionRate)}
+                  />
+                  <Metric
+                    label="Experiment contribution"
+                    value={money(experimentSummary.contributionProfit)}
+                  />
+                  <Metric
+                    label="Experiment margin"
+                    value={percent(experimentSummary.margin)}
+                  />
+                </div>
+              </>
+            ) : (
+              <Empty>No experiment metrics in this date range.</Empty>
+            )}
+          </Panel>
           <Panel title="Revenue, advertising and contribution">
             <div className="chart">
               {a.series.length ? (
@@ -1740,6 +1868,10 @@ function SettingsPage({ state, mutate }: { state: AppState; mutate: Mutate }) {
   const d = state.data;
   return (
     <>
+      <div className="twoColumn stack">
+        <SourceIngestion state={state} mutate={mutate} />
+        <ShopifySettings state={state} mutate={mutate} />
+      </div>
       <Panel title="Integrations">
         <Table
           heads={["Provider", "State", "Last successful sync", "Configuration"]}
@@ -1753,17 +1885,19 @@ function SettingsPage({ state, mutate }: { state: AppState; mutate: Mutate }) {
               </td>
               <td>{i.lastSyncedAt ? date(i.lastSyncedAt) : "Never"}</td>
               <td>
-                {["Shopify", "YouTube"].includes(i.provider)
-                  ? "Server environment variables"
-                  : "Provider implementation planned"}
+                {i.provider === "Wikimedia"
+                  ? "Public API · select topic to configure"
+                  : ["Shopify", "YouTube"].includes(i.provider)
+                    ? "Server environment variables"
+                    : "Provider implementation planned"}
               </td>
             </tr>
           ))}
         </Table>
         <p className="sectionIntro">
-          CONNECTED means credentials are configured, not that data has been
-          verified. LIVE is a record’s origin mode. Successful sync time is
-          recorded only after a provider operation finishes.
+          CONNECTED requires a successful provider check. UNVERIFIED means
+          credentials have not been tested. LIVE requires retrieved source
+          evidence; STALE means its latest observation is over seven days old.
         </p>
       </Panel>
       <div className="twoColumn stack">
@@ -1799,7 +1933,7 @@ function SettingsPage({ state, mutate }: { state: AppState; mutate: Mutate }) {
               disabled={
                 state.mode === "DEMO" ||
                 state.integrations.find((i) => i.provider === "YouTube")
-                  ?.status !== "CONNECTED"
+                  ?.configured !== true
               }
             >
               Ingest observations
@@ -1869,7 +2003,11 @@ function SettingsPage({ state, mutate }: { state: AppState; mutate: Mutate }) {
                 <td>{j.error ?? "—"}</td>
                 <td>
                   {j.status === "ERROR" &&
-                    j.type !== "STORE_SYNC" &&
+                    (j.type !== "STORE_SYNC" ||
+                      Boolean(
+                        d.listings.find((l) => l.id === j.payload.listingId)
+                          ?.externalId,
+                      )) &&
                     j.retryCount < 3 && (
                       <button
                         onClick={() =>

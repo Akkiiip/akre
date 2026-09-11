@@ -61,3 +61,7 @@ Saved criteria define traffic minimums, purchase minimums, spend guardrail, targ
 CTR = clicks / impressions, CPC = spend / clicks, CVR = purchases / clicks, ROAS = revenue / spend. Zero denominators yield null. Daily metric inputs enforce a sequential funnel and experiment date bounds. These rules are deterministic operating guardrails, not a statistical significance claim. Recommendations never launch or stop external campaigns automatically.
 
 Each persisted Decision includes the metrics, saved criteria, cost snapshot, score version, reasons and evaluation timestamp. Unit tests cover exact weighting, inverse factors, missing inputs, normalization, identity grouping, lifecycle restrictions, break-even equations, negative/zero economics, and all four decision outcomes.
+
+## Live-workflow hardening
+
+Wikimedia attention acceleration uses three complete seven-day windows. The change between successive weekly growth percentages is normalized from -100 to 100 into 0–100. Gaps or zero baselines produce no signal. This populates trendAcceleration only, never demandStrength. Signals expire after seven days. Model akre-score/1.0.0 has frozen registered weights; ingestion preserves the existing version. Explicit current-model recalculation appends a new immutable snapshot without modifying prior inputs, components or evidence. Air fryer therefore has a null AKRE score despite real pageview observations.

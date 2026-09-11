@@ -1,0 +1,20 @@
+{
+  "verifiedAt": "2026-09-11T09:28:33.035Z",
+  "routes": [
+    "radar",
+    "products",
+    "suppliers",
+    "store",
+    "content",
+    "experiments",
+    "analytics",
+    "settings"
+  ],
+  "realPersistedObservations": 28,
+  "realPersistedSignals": 8,
+  "radarSourceState": "LIVE",
+  "shopifyState": "NOT CONFIGURED",
+  "consoleErrors": [],
+  "mode": "LIVE",
+  "note": "Browser read actual persisted external observations; no source responses or metrics were fabricated."
+}

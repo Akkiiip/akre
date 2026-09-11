@@ -1,0 +1,17 @@
+{
+  "verifiedAt": "2026-09-11T09:27:31.887Z",
+  "database": "data/live.sqlite",
+  "product": "Air fryer",
+  "observations": 28,
+  "attentionAccelerationSignals": 8,
+  "score": null,
+  "scoreVersion": "akre-score/1.0.0",
+  "missingPurchasingEvidence": true,
+  "auditEvents": 5,
+  "immutableScoreSnapshots": 2,
+  "immutableUpdateAndDeleteVerified": true,
+  "demoSeparationVerified": true,
+  "sourceState": "LIVE",
+  "shopifyWithoutCredentials": "NOT CONFIGURED",
+  "note": "Read existing persisted source data; no provider responses or business metrics generated."
+}

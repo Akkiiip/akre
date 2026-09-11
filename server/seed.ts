@@ -8,6 +8,8 @@ import type {
 import { scoreOpportunity } from "../shared/scoring";
 import { identityKey, NORMALIZATION_VERSION } from "../shared/discovery";
 export const emptyDataset = (): Dataset => ({
+  scoreHistory: [],
+  connections: [],
   products: [],
   opportunities: [],
   sources: [],

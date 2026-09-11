@@ -39,3 +39,7 @@ Allowed kill/archive exits are declared explicitly in `shared/lifecycle.ts`. Arc
 Source observations are keyed by source and external observation ID. Product names are conservatively normalized for Unicode/case/punctuation/whitespace; different sizes remain distinct. This is deterministic grouping, not completed semantic entity resolution. Signals link back to raw observations; latest source/factor values prevent repeated polling from overweighting a source. Normalized source values aggregate by arithmetic mean for this version. Every result stores the method version. Missing values use null, never invented zeroes.
 
 Demo fixtures preserve the six original MVP products, supplier names and per-order cost examples. Additional factor inputs are explicitly synthetic examples, never live findings. No demo orders, spend history or experiments are seeded. LIVE databases initialize empty. Changing mode on an existing database is refused.
+
+## Live-workflow hardening
+
+Products now retain canonicalName, aliases, sourceReferences, firstSeen and lastSeen. Raw source observations retain externalId, observedAt, fetchedAt, region, signalType/value, sourceUrl and untouched payload. Derived signals retain observation IDs and normalization provenance. Opportunities retain scoreVersion/scoredAt; scoreHistory is append-only, including migration baselines. Connections retain server-side configuration fingerprints/verification times; jobs retain providerFingerprint. Live and demo database modes cannot be mixed.

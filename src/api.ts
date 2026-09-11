@@ -7,6 +7,9 @@ export interface AppState {
     status: string;
     lastSyncedAt: string | null;
     error: string | null;
+    configured?: boolean;
+    verifiedAt?: string | null;
+    detail?: Record<string, unknown> | null;
   }[];
 }
 export class ApiError extends Error {

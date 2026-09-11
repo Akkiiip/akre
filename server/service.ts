@@ -18,6 +18,13 @@ import {
   YouTubeProvider,
   NotConfiguredError,
 } from "./providers";
+import { WikimediaProvider, ingestionInput } from "./wikimedia";
+import { ingestWikimedia, recompute, upsertIdentity } from "./intelligence";
+import {
+  integrationStates,
+  validateShopifyJob,
+  executeShopifyJob,
+} from "./shopify-workflow";
 const amount = z.number().finite().nonnegative().max(1e9),
   count = amount.int();
 const date = z.iso.date();
@@ -55,6 +62,7 @@ export class Service {
     public repo: Repository,
     public shopify: ShopifyProvider,
     public youtube: YouTubeProvider,
+    public wikimedia = new WikimediaProvider(),
   ) {}
   base(id: string = randomUUID()): Entity {
     const at = new Date().toISOString();
@@ -76,35 +84,7 @@ export class Service {
     });
   }
   integrations() {
-    return [
-      { provider: "Shopify", status: this.shopify.status() },
-      { provider: "YouTube", status: this.youtube.status() },
-      ...[
-        "Google Trends",
-        "Meta / Instagram",
-        "TikTok",
-        "Reddit",
-        "Search data",
-        "Marketplace",
-        "Supplier feeds",
-      ].map((provider) => ({ provider, status: "NOT CONFIGURED" })),
-    ].map((i) => {
-      const jobs = this.repo
-        .list("jobs")
-        .filter((j) => j.source === i.provider.toLowerCase())
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-      const latest = jobs[0];
-      return {
-        ...i,
-        status:
-          latest?.status === "ERROR" && i.status === "CONNECTED"
-            ? "ERROR"
-            : i.status,
-        lastSyncedAt:
-          jobs.find((j) => j.status === "COMPLETED")?.completedAt ?? null,
-        error: latest?.status === "ERROR" ? latest.error : null,
-      };
-    });
+    return integrationStates(this);
   }
   transition(productId: string, body: unknown) {
     const { lifecycle } = z
@@ -139,10 +119,26 @@ export class Service {
     });
   }
   saveCosts(productId: string, body: unknown) {
-    const assumptions = costSchema.parse(body);
+    const { supplierOfferId, ...fields } = z
+      .object({ supplierOfferId: z.string().nullable().optional() })
+      .passthrough()
+      .parse(body);
+    const assumptions = costSchema.parse(fields);
     economics(assumptions);
     return this.repo.transaction(() => {
       this.repo.get("products", productId);
+      if (supplierOfferId) {
+        const offer = this.repo.get("offers", supplierOfferId);
+        if (
+          offer.productId !== productId ||
+          offer.shippingCost === null ||
+          offer.unitCost !== assumptions.productCost ||
+          offer.shippingCost !== assumptions.shipping
+        )
+          throw new Error(
+            "Offer costs must match the selected quote; choose manual assumptions to override",
+          );
+      }
       const current = this.repo
         .list("costs")
         .find((c) => c.productId === productId);
@@ -154,6 +150,7 @@ export class Service {
           currency: "INR",
         }),
         assumptions,
+        supplierOfferId: supplierOfferId ?? null,
         updatedAt: new Date().toISOString(),
       };
       this.repo.put("costs", cost);
@@ -386,18 +383,26 @@ export class Service {
     const input = z
       .object({
         type: z.enum(jobTypes),
-        source: z.enum(["demo", "youtube", "shopify", "internal", "supplier"]),
+        source: z.enum([
+          "demo",
+          "youtube",
+          "shopify",
+          "internal",
+          "supplier",
+          "wikimedia",
+        ]),
         payload: z.record(z.string(), z.unknown()).default({}),
       })
       .strict()
       .parse(body);
     if (
       this.repo.mode === "DEMO" &&
-      ["youtube", "shopify", "supplier"].includes(input.source)
+      ["youtube", "shopify", "supplier", "wikimedia"].includes(input.source)
     )
       throw new Error("External operations are disabled in DEMO mode");
     if (
       input.type === "TREND_INGESTION" &&
+      input.source !== "wikimedia" &&
       (input.source !== "youtube" || this.youtube.status() === "NOT CONFIGURED")
     )
       throw new NotConfiguredError("YouTube");
@@ -408,7 +413,11 @@ export class Service {
       throw new NotConfiguredError("Shopify");
     if (input.type === "SUPPLIER_REFRESH")
       throw new NotConfiguredError("Supplier feed");
-    if (input.type === "TREND_INGESTION") text.parse(input.payload.query);
+    if (input.type === "TREND_INGESTION") {
+      if (input.source === "wikimedia") ingestionInput.parse(input.payload);
+      else text.parse(input.payload.query);
+    }
+    validateShopifyJob(this, input);
     if (input.type === "STORE_SYNC") {
       id.parse(input.payload.listingId);
       this.repo.get("listings", String(input.payload.listingId));
@@ -423,6 +432,9 @@ export class Service {
         error: null,
         retryCount: 0,
         requestedBy: "owner",
+        ...(input.source === "shopify"
+          ? { providerFingerprint: this.shopify.fingerprint() }
+          : {}),
       };
       this.repo.put("jobs", job);
       this.audit("JOB_QUEUED", job.id, { type: job.type, source: job.source });
@@ -436,7 +448,10 @@ export class Service {
         throw new Error(
           "Only failed jobs with fewer than three retries can be retried",
         );
-      if (j.type === "STORE_SYNC")
+      if (
+        j.type === "STORE_SYNC" &&
+        !this.repo.get("listings", String(j.payload.listingId)).externalId
+      )
         throw new Error(
           "Reconcile the remote Shopify product before retrying a potentially completed create",
         );
@@ -509,6 +524,11 @@ export class Service {
     return true;
   }
   async execute(job: SyncJob) {
+    if (await executeShopifyJob(this, job)) return;
+    if (job.type === "TREND_INGESTION" && job.source === "wikimedia") {
+      await ingestWikimedia(this, job, this.wikimedia);
+      return;
+    }
     if (job.type === "TREND_INGESTION") {
       const observations = await this.youtube.observe(
         String(job.payload.query),
@@ -529,49 +549,10 @@ export class Service {
     }
     if (job.type === "PRODUCT_DISCOVERY") {
       this.repo.transaction(() => {
-        for (const o of deduplicate(this.repo.list("observations"))) {
-          const key = identityKey(o.productName);
-          if (!this.repo.list("products").some((p) => p.identityKey === key))
-            this.repo.put("products", {
-              ...this.base(),
-              name: o.productName,
-              category: o.category,
-              identityKey: key,
-              lifecycle: "DISCOVERED",
-              supplierIds: [],
-            });
-        }
-        for (const result of discover(
-          this.repo.list("products"),
-          this.repo.list("signals"),
-        )) {
-          const existing = this.repo
-            .list("opportunities")
-            .find((o) => o.productId === result.productId);
-          this.repo.put("opportunities", {
-            ...(existing ?? {
-              ...this.base(),
-              sellingPrice: null,
-              costId: null,
-            }),
-            ...result,
-            sourceIds: [
-              ...new Set([
-                ...result.sourceIds,
-                ...this.repo
-                  .list("observations")
-                  .filter(
-                    (o) =>
-                      identityKey(o.productName) ===
-                      this.repo.get("products", result.productId).identityKey,
-                  )
-                  .map((o) => o.sourceId),
-              ]),
-            ],
-            updatedAt: new Date().toISOString(),
-          });
-          this.audit("OPPORTUNITY_SCORED", result.productId, { ...result });
-        }
+        for (const o of deduplicate(this.repo.list("observations")))
+          upsertIdentity(this, o);
+        for (const p of this.repo.list("products"))
+          recompute(this, p.id, "EXPLICIT_RECALCULATION", true);
       });
       return;
     }

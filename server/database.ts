@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Dataset, DataMode, Entity } from "../shared/domain";
 import { emptyDataset, seed } from "./seed";
+import { migrateIdentityAndScores } from "./migrate";
 export class Repository {
   db: DatabaseSync;
   constructor(
@@ -34,6 +35,7 @@ export class Repository {
         for (const kind of Object.keys(d) as (keyof Dataset)[])
           for (const entity of d[kind]) this.put(kind, entity);
       });
+    migrateIdentityAndScores(this);
   }
   transaction<T>(fn: () => T): T {
     this.db.exec("BEGIN IMMEDIATE");

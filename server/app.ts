@@ -1,4 +1,5 @@
 import express from "express";
+import { registerLiveRoutes } from "./live-routes";
 import { registerCatalogue } from "./catalogue";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { resolve } from "node:path";
@@ -106,6 +107,7 @@ export function createApp(
     res.json({ ok: true });
   });
   registerCatalogue(app, service);
+  registerLiveRoutes(app, service);
   app.get("/api/state", (_req, res) =>
     res.json({
       mode: service.repo.mode,

@@ -8,6 +8,7 @@ import {
   NORMALIZATION_VERSION,
 } from "../shared/discovery";
 import { scoreOpportunity } from "../shared/scoring";
+import { matchProduct, upsertIdentity, recompute } from "./intelligence";
 const text = z.string().trim().min(1).max(200),
   id = z.string().min(1).max(150),
   amount = z.number().finite().nonnegative().max(1e9);
@@ -53,7 +54,12 @@ export function registerCatalogue(app: Express, s: Service) {
     const opportunity = s.repo.transaction(() => {
       const key = identityKey(input.productName);
       if (!key) throw new Error("Product name must contain letters or numbers");
-      let p = s.repo.list("products").find((p) => p.identityKey === key);
+      let p = matchProduct(
+        s.repo.list("products"),
+        input.productName,
+        input.category,
+        input.reference,
+      );
       if (!p) {
         p = {
           ...s.base(),
@@ -88,6 +94,7 @@ export function registerCatalogue(app: Express, s: Service) {
         },
       };
       s.repo.put("observations", observation);
+      p = upsertIdentity(s, observation);
       for (const m of input.measurements)
         s.repo.put("signals", {
           ...s.base(),
@@ -119,9 +126,10 @@ export function registerCatalogue(app: Express, s: Service) {
         observation,
         normalizationVersion: NORMALIZATION_VERSION,
       });
+      recompute(s, p.id, "MANUAL_EVIDENCE");
       return p;
     });
-    s.enqueue({ type: "PRODUCT_DISCOVERY", source: "internal", payload: {} });
+    // Manual evidence updates only its product, preserving the stored scoring version.
     res.status(201).json(opportunity);
   });
   app.post("/api/offers", (req, res) => {
@@ -129,6 +137,8 @@ export function registerCatalogue(app: Express, s: Service) {
       .object({
         productId: id,
         supplierName: text,
+        source: text.default("Operator entered"),
+        sku: z.string().trim().max(200).default(""),
         region: text,
         variantId: id.nullable(),
         moq: z.number().int().min(1),

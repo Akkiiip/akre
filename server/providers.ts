@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { z } from "zod";
+import { setInventory } from "./shopify-api";
 import type {
   SourceObservation,
   SupplierOffer,
@@ -30,6 +33,8 @@ export interface StoreProvider extends Provider {
     inventoryItemId: string,
     locationId: string,
     quantity: number,
+    changeFromQuantity: number,
+    idempotencyKey: string,
   ): Promise<void>;
   syncPrice(variantId: string, productId: string, price: number): Promise<void>;
   syncOrders(since: string): Promise<unknown[]>;
@@ -46,8 +51,30 @@ export class ShopifyProvider implements StoreProvider {
   ) {}
   status(): ConnectionStatus {
     return this.config.shop && this.config.token
-      ? "CONNECTED"
+      ? "UNVERIFIED"
       : "NOT CONFIGURED";
+  }
+  fingerprint() {
+    return createHash("sha256")
+      .update(JSON.stringify(this.config))
+      .digest("hex");
+  }
+  async testConnection() {
+    const result = await this.graphql<unknown>(
+      "query{shop{id name myshopifyDomain currencyCode plan{partnerDevelopment}}}",
+      {},
+    );
+    return z
+      .object({
+        shop: z.object({
+          id: z.string().min(1),
+          name: z.string(),
+          myshopifyDomain: z.string(),
+          currencyCode: z.literal("INR"),
+          plan: z.object({ partnerDevelopment: z.literal(true) }),
+        }),
+      })
+      .parse(result).shop;
   }
   async graphql<T>(
     query: string,
@@ -126,17 +153,13 @@ export class ShopifyProvider implements StoreProvider {
     inventoryItemId: string,
     locationId: string,
     quantity: number,
+    changeFromQuantity: number,
+    idempotencyKey: string,
   ) {
-    await this.graphql(
-      "mutation($input:InventorySetQuantitiesInput!){inventorySetQuantities(input:$input){userErrors{message}}}",
-      {
-        input: {
-          name: "available",
-          reason: "correction",
-          ignoreCompareQuantity: true,
-          quantities: [{ inventoryItemId, locationId, quantity }],
-        },
-      },
+    await setInventory(
+      this,
+      { inventoryItemId, locationId, quantity, changeFromQuantity },
+      idempotencyKey,
     );
   }
   async syncPrice(variantId: string, productId: string, price: number) {
@@ -148,6 +171,7 @@ export class ShopifyProvider implements StoreProvider {
   async syncOrders(since: string) {
     let cursor: string | null = null;
     const orders: unknown[] = [];
+    const seen = new Set<string>();
     do {
       const d: {
         orders: {
@@ -158,6 +182,21 @@ export class ShopifyProvider implements StoreProvider {
         "query($q:String!,$cursor:String){orders(first:100,after:$cursor,query:$q){nodes{id createdAt currencyCode currentTotalPriceSet{shopMoney{amount currencyCode}} currentTotalTaxSet{shopMoney{amount}} totalRefundedSet{shopMoney{amount}}} pageInfo{hasNextPage endCursor}}}",
         { q: `updated_at:>=${since}`, cursor },
       );
+      z.object({
+        orders: z.object({
+          nodes: z.array(z.unknown()),
+          pageInfo: z.object({
+            hasNextPage: z.boolean(),
+            endCursor: z.string().nullable(),
+          }),
+        }),
+      }).parse(d);
+      if (d.orders.pageInfo.hasNextPage) {
+        const next = d.orders.pageInfo.endCursor;
+        if (!next || seen.has(next))
+          throw new Error("Shopify returned invalid order pagination");
+        seen.add(next);
+      }
       orders.push(...d.orders.nodes);
       cursor = d.orders.pageInfo.hasNextPage
         ? d.orders.pageInfo.endCursor

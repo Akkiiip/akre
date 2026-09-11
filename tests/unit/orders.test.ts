@@ -10,6 +10,13 @@ it("imports actual net tax-exclusive order amounts idempotently without inventin
     version: "2026-07",
   });
   const service = new Service(repo, shopify, new YouTubeProvider());
+  vi.spyOn(shopify, "testConnection").mockResolvedValue({
+    id: "gid://shopify/Shop/1",
+    name: "Test shop",
+    myshopifyDomain: "test.myshopify.com",
+    plan: { partnerDevelopment: true as const },
+    currencyCode: "INR",
+  });
   vi.spyOn(shopify, "syncOrders").mockResolvedValue([
     {
       id: "gid://shopify/Order/1",

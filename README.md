@@ -19,9 +19,9 @@ A working production foundation built on the original AKRE React/Vite MVP.
 
 ## What is live?
 
-**No external service is connected or live-verified in this milestone. No public deployment is provisioned.** The application is executable and backed by real persistence, but defaults to an explicitly marked DEMO workspace. Its six sample products preserve the original MVP. There are no seeded sales, orders, experiments or historical chart values.
+**Wikimedia public pageviews were retrieved and persisted: 28 Air fryer daily observations and 8 derived attention-acceleration signals. No public deployment is provisioned.** The application is executable and backed by real persistence, but defaults to an explicitly marked DEMO workspace. Its six sample products preserve the original MVP. There are no seeded sales, orders, experiments or historical chart values.
 
-A separate LIVE database starts empty. Manual sourced observations/offers can be recorded; external APIs require server credentials. CONNECTED means configured credentials, not verified data. Missing providers display NOT CONFIGURED. External operations are blocked in DEMO.
+A separate LIVE database starts empty. Manual sourced observations/offers can be recorded; Wikimedia uses its official keyless public API. Shopify and YouTube require server credentials. CONNECTED requires a successful Shopify test; credentials alone mean UNVERIFIED. Missing providers display NOT CONFIGURED. External operations are blocked in DEMO.
 
 ## Run and verify
 
@@ -40,7 +40,7 @@ For a hosted/LIVE environment, see [.env.example](.env.example) and [Setup](docs
 
 ## Implementation boundaries
 
-This is a single-owner, single-workspace foundation. Multi-user OIDC/RBAC, PostgreSQL normalization, separated workers, calibrated demand providers, supplier feeds, full Shopify variant/publication controls, order item costs, tax reconciliation, spend attribution and content publishing remain PLANNED. Shopify draft content and order jobs have real adapters but need credentialed acceptance testing. A successful content sync does not claim price, inventory or publication sync.
+This is a single-owner, single-workspace foundation. Multi-user OIDC/RBAC, PostgreSQL normalization, separated workers, calibrated demand providers, supplier feeds, Shopify publication workflows, order item costs, tax reconciliation, spend attribution and content publishing remain PLANNED. Shopify draft content and order jobs have real adapters but need credentialed acceptance testing. A successful content sync does not claim price, inventory or publication sync.
 
 ## Documentation
 
@@ -50,4 +50,4 @@ This is a single-owner, single-workspace foundation. Multi-user OIDC/RBAC, Postg
 - [Data model](docs/DATA_MODEL.md)
 - [Scoring, economics and experiment rules](docs/SCORING.md)
 
-Next milestone: connect a Shopify development store and an approved demand source, verify real sync/provenance, and reconcile actual order costs plus advertising spend before exposing live contribution-profit recommendations.
+Next milestone: credentialed acceptance testing on an INR Shopify development store. Wikimedia attention is not purchasing demand; the live AKRE score remains withheld. Reconcile actual order costs and advertising spend before live profit recommendations.

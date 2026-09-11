@@ -32,3 +32,7 @@ This is an owner access gate, not a full identity service. Before public multi-u
 ## PLANNED — next production layers
 
 PostgreSQL relational tables/foreign keys and paginated queries; OIDC and RBAC; scheduler/worker isolation; approved statistical normalization for additional sources; provider token lifecycle and webhooks; Shopify variant/publication mapping and operator controls; full order items/cost reconciliation; tax and multi-currency accounting; marketing attribution and spend coverage; content generation/publishing providers. No deployment or external connectivity is claimed by this milestone.
+
+## Live-workflow hardening
+
+Live ingestion uses server/wikimedia.ts for official API validation, server/intelligence.ts for transactional normalization/identity/scoring, and persistent jobs for errors/retries/audit. server/shopify-workflow.ts requires verified development-store identity and remote readback. SQLite migration 2 adds canonical identities and append-only score/audit triggers. Existing React/Vite modules and API remain the foundation.

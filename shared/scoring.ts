@@ -21,7 +21,18 @@ export const weights: Record<Factor, number> = {
 const inverse = new Set<Factor>(["competition", "saturationRisk"]);
 export const factorLabel = (factor: string) =>
   factor.replace(/([A-Z])/g, " $1").replace(/^./, (v) => v.toUpperCase());
-export function scoreOpportunity(inputs: ScoringInputs): ScoreResult {
+export const scoringModels: Readonly<
+  Record<string, Readonly<Record<Factor, number>>>
+> = Object.freeze({ [SCORING_VERSION]: Object.freeze({ ...weights }) });
+export function scoreOpportunity(
+  inputs: ScoringInputs,
+  version = SCORING_VERSION,
+): ScoreResult {
+  const model = scoringModels[version];
+  if (!model)
+    throw new Error(
+      `Unknown scoring version: ${version}. Explicit current-model recalculation is required.`,
+    );
   const components = factors.map((factor) => {
     const input = inputs[factor] ?? null;
     if (input !== null && (!Number.isFinite(input) || input < 0 || input > 100))
@@ -32,7 +43,7 @@ export function scoreOpportunity(inputs: ScoringInputs): ScoreResult {
       factor,
       input,
       score,
-      weight: weights[factor],
+      weight: model[factor],
       explanation:
         input === null
           ? "Insufficient data"
@@ -47,7 +58,7 @@ export function scoreOpportunity(inputs: ScoringInputs): ScoreResult {
     inputs.demandStrength != null &&
     inputs.trendAcceleration != null;
   return {
-    version: SCORING_VERSION,
+    version,
     score: eligible
       ? Math.round(
           present.reduce((n, c) => n + c.score! * c.weight, 0) / coverage,

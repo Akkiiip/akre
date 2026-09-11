@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { MeasurementFields, measurementsFromForm } from "./MeasurementFields";
 import type { Dataset } from "../shared/domain";
 type Mutate = (
   path: string,
@@ -23,7 +24,7 @@ export function ProductCreate({ mutate }: { mutate: Mutate }) {
               sourceName: f.get("source"),
               reference: f.get("reference"),
               note: f.get("note"),
-              measurements: [],
+              measurements: measurementsFromForm(f),
             },
             "Source observation saved; discovery queued. Scores stay unavailable until normalized evidence is recorded.",
           );
@@ -50,6 +51,7 @@ export function ProductCreate({ mutate }: { mutate: Mutate }) {
           <span>Evidence note</span>
           <textarea name="note" required minLength={3} />
         </label>
+        <MeasurementFields />
         <button>Record opportunity</button>
       </form>
     </details>
@@ -72,6 +74,8 @@ export function OfferCreate({ d, mutate }: { d: Dataset; mutate: Mutate }) {
             {
               productId,
               supplierName: f.get("supplier"),
+              source: f.get("offerSource"),
+              sku: f.get("supplierSku"),
               region: f.get("region"),
               variantId: f.get("variant") || null,
               moq: Number(f.get("moq")),
@@ -118,6 +122,8 @@ export function OfferCreate({ d, mutate }: { d: Dataset; mutate: Mutate }) {
           </label>
           {[
             ["supplier", "Supplier name"],
+            ["offerSource", "Offer source (operator entered)"],
+            ["supplierSku", "Supplier SKU"],
             ["region", "Country / region"],
             ["reference", "Offer source URL"],
           ].map(([name, label]) => (

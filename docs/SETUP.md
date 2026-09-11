@@ -42,3 +42,7 @@ LIVE manual intake is available under Radar/Products. Record a source URL and no
 ## Operations
 
 Keep the SQLite database on durable storage. Back up using SQLite's online backup mechanism or stop the single process before copying the database and associated WAL files. Do not copy only a live main database file. Test restoration on an isolated host with the same mode. A managed process supervisor should restart the server on failures. Queue errors and provider error codes appear in Settings; do not blindly retry an interrupted Shopify create. There is no public deployment provisioned in this change.
+
+## Live-workflow hardening
+
+For actual keyless Wikimedia ingestion use Settings in the separate LIVE workspace, or run npx tsx scripts/ingest-live.ts --report. The CLI defaults to data/live.sqlite and an Air_fryer query. Never point it at the demo database. Verify existing persisted data with npx tsx scripts/verify-live-data.ts; after building, run npx tsx scripts/verify-live-browser.ts with PLAYWRIGHT_CHANNEL=chrome when using installed Chrome. These verification scripts do not fabricate observations. Shopify requires an INR partner development store and server-only credentials; without them Settings remains NOT CONFIGURED. No public deployment is provisioned.

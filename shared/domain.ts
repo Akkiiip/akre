@@ -1,7 +1,15 @@
 export type ID = string;
 export type DataMode = "DEMO" | "LIVE";
 export type ConnectionStatus =
-  "DEMO" | "LIVE" | "CONNECTED" | "NOT CONFIGURED" | "ERROR";
+  | "DEMO"
+  | "LIVE"
+  | "CONNECTED"
+  | "NOT CONFIGURED"
+  | "ERROR"
+  | "UNVERIFIED"
+  | "SYNCING"
+  | "SYNCED"
+  | "STALE";
 export const lifecycles = [
   "DISCOVERED",
   "SHORTLISTED",
@@ -30,6 +38,11 @@ export interface Workspace extends Entity {
   currency: string;
 }
 export interface Product extends Entity {
+  canonicalName?: string;
+  aliases?: string[];
+  sourceReferences?: string[];
+  firstSeen?: string;
+  lastSeen?: string;
   name: string;
   category: string;
   identityKey: string;
@@ -68,6 +81,8 @@ export interface ScoreResult {
   missing: Factor[];
 }
 export interface ProductOpportunity extends Entity {
+  scoreVersion?: string;
+  scoredAt?: string;
   productId: ID;
   sourceIds: ID[];
   signalIds: ID[];
@@ -83,6 +98,13 @@ export interface TrendSource extends Entity {
   status: ConnectionStatus;
 }
 export interface SourceObservation extends Entity {
+  region?: string;
+  signalType?: string;
+  signalValue?: number;
+  confidence?: number;
+  fetchedAt?: string;
+  providerVersion?: string;
+  sourceUrl?: string;
   sourceId: ID;
   externalId: string;
   productName: string;
@@ -92,6 +114,8 @@ export interface SourceObservation extends Entity {
   payload: Record<string, unknown>;
 }
 export interface TrendSignal extends Entity {
+  validUntil?: string;
+  evidence?: Record<string, unknown>;
   productId: ID;
   sourceId: ID;
   observationId: ID;
@@ -109,6 +133,8 @@ export interface Supplier extends Entity {
   confidence: number | null;
 }
 export interface SupplierOffer extends Entity {
+  source?: string;
+  sku?: string;
   supplierId: ID;
   productId: ID;
   variantId: ID | null;
@@ -152,6 +178,16 @@ export interface Store extends Entity {
   domain: string | null;
 }
 export interface StoreProduct extends Entity {
+  remoteVariants?: {
+    id: string;
+    sku: string;
+    price: number;
+    inventoryItemId: string;
+    inventory: { locationId: string; locationName: string; quantity: number }[];
+  }[];
+  remoteStatus?: string;
+  priceSyncedAt?: string;
+  inventorySyncedAt?: string;
   storeId: ID;
   productId: ID;
   externalId: string | null;
@@ -255,12 +291,19 @@ export interface Decision extends Entity {
   evidence: Record<string, unknown>;
 }
 export interface Integration extends Entity {
+  verifiedAt?: string;
+  fingerprint?: string;
+  detail?: Record<string, unknown>;
   provider: string;
   status: ConnectionStatus;
   lastSyncedAt: string | null;
   error: string | null;
 }
 export const jobTypes = [
+  "SHOPIFY_CONNECT",
+  "SHOPIFY_PRODUCT_IMPORT",
+  "SHOPIFY_PRICE_SYNC",
+  "SHOPIFY_INVENTORY_SYNC",
   "TREND_INGESTION",
   "PRODUCT_DISCOVERY",
   "SUPPLIER_REFRESH",
@@ -272,6 +315,7 @@ export const jobTypes = [
 ] as const;
 export type JobType = (typeof jobTypes)[number];
 export interface SyncJob extends Entity {
+  providerFingerprint?: string;
   type: JobType;
   status: "QUEUED" | "RUNNING" | "COMPLETED" | "ERROR";
   startedAt: string | null;
@@ -288,7 +332,19 @@ export interface AuditEvent extends Entity {
   entityId: ID;
   evidence: Record<string, unknown>;
 }
+export interface ScoreSnapshot extends Entity {
+  productId: ID;
+  opportunityId: ID;
+  reason: string;
+  scoreVersion: string;
+  inputs: ScoringInputs;
+  scoring: ScoreResult;
+  signalIds: ID[];
+  evidence: Record<string, unknown>;
+}
 export interface Dataset {
+  scoreHistory: ScoreSnapshot[];
+  connections: Integration[];
   products: Product[];
   opportunities: ProductOpportunity[];
   sources: TrendSource[];
