@@ -45,9 +45,10 @@ export async function api<T = unknown>(
 
   if (!response.ok) {
     const fallback = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    const detail = typeof data?.detail === "string" ? data.detail.trim() : "";
     const message =
       typeof data?.error === "string" && data.error.trim()
-        ? data.error
+        ? `${data.error}${detail ? `: ${detail}` : ""}`
         : fallback.slice(0, 240) || `Request failed (${response.status})`;
     throw new ApiError(message, response.status);
   }
