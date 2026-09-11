@@ -15,23 +15,45 @@ async function getServer(): Promise<ServerState> {
   globalState.__akreServerPromise = (async () => {
     const mode = process.env.AKRE_MODE ?? "DEMO";
     if (mode !== "DEMO" && mode !== "LIVE")
-      throw new Error("AKRE_MODE must be DEMO or LIVE");
+      throw new Error("config: AKRE_MODE must be DEMO or LIVE");
 
-    // Lazy imports make initialization failures observable through the
-    // handler's JSON error response instead of becoming a generic Vercel
-    // FUNCTION_INVOCATION_FAILED before the handler can run.
-    const [{ Repository }, { Service }, { ShopifyProvider, YouTubeProvider }, { createApp }] =
-      await Promise.all([
-        import("../server/database"),
-        import("../server/service"),
-        import("../server/providers"),
-        import("../server/app"),
-      ]);
+    let Repository: typeof import("../server/database").Repository;
+    let Service: typeof import("../server/service").Service;
+    let ShopifyProvider: typeof import("../server/providers").ShopifyProvider;
+    let YouTubeProvider: typeof import("../server/providers").YouTubeProvider;
+    let createApp: typeof import("../server/app").createApp;
 
-    const repo = new Repository(
-      process.env.DATABASE_PATH ?? "/tmp/akre.sqlite",
-      mode,
-    );
+    try {
+      ({ Repository } = await import("../server/database"));
+    } catch (error) {
+      throw new Error(`database import: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    try {
+      ({ Service } = await import("../server/service"));
+    } catch (error) {
+      throw new Error(`service import: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    try {
+      ({ ShopifyProvider, YouTubeProvider } = await import("../server/providers"));
+    } catch (error) {
+      throw new Error(`provider import: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    try {
+      ({ createApp } = await import("../server/app"));
+    } catch (error) {
+      throw new Error(`app import: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    let repo: InstanceType<typeof Repository>;
+    try {
+      repo = new Repository(
+        process.env.DATABASE_PATH ?? "/tmp/akre.sqlite",
+        mode,
+      );
+    } catch (error) {
+      throw new Error(`database initialization: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
     const service = new Service(
       repo,
       new ShopifyProvider({
@@ -42,11 +64,16 @@ async function getServer(): Promise<ServerState> {
       new YouTubeProvider(process.env.YOUTUBE_API_KEY),
     );
 
-    const app = createApp(service, {
-      password: process.env.AKRE_ADMIN_PASSWORD,
-      sessionSecret: process.env.AKRE_SESSION_SECRET,
-      origin: process.env.PUBLIC_ORIGIN,
-    });
+    let app: ReturnType<typeof createApp>;
+    try {
+      app = createApp(service, {
+        password: process.env.AKRE_ADMIN_PASSWORD,
+        sessionSecret: process.env.AKRE_SESSION_SECRET,
+        origin: process.env.PUBLIC_ORIGIN,
+      });
+    } catch (error) {
+      throw new Error(`app initialization: ${error instanceof Error ? error.message : String(error)}`);
+    }
 
     return { app, service };
   })();
@@ -54,7 +81,6 @@ async function getServer(): Promise<ServerState> {
   try {
     return await globalState.__akreServerPromise;
   } catch (error) {
-    // Do not permanently cache a failed cold-start initialization.
     globalState.__akreServerPromise = undefined;
     throw error;
   }
@@ -71,6 +97,7 @@ export default async function handler(req: any, res: any) {
       res.status(500).json({
         error: "AKRE backend failed to initialize",
         detail: message,
+        runtime: process.version,
       });
     } else {
       res.end();
