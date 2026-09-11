@@ -342,7 +342,8 @@ function App() {
             <Status value={state.mode === "LIVE" ? "PRODUCTION" : "DEMO"} />
             <span>
               {state.mode === "DEMO"
-                ? "Demonstration workspace. Product signals and cost assumptions are sample data. Saved changes remain in the demo database."
+                ? (state.storage?.notice ??
+                  "Demonstration workspace. Product signals and cost assumptions are sample data. Saved changes remain in the demo database.")
                 : "Production workspace. LIVE labels require retrieved source evidence. Manual assumptions and missing data are identified separately."}
             </span>
           </div>
@@ -365,7 +366,11 @@ function App() {
           </div>
         )}
         {!d ? (
-          <Empty>Loading workspace…</Empty>
+          <Empty>
+            {error
+              ? "Workspace unavailable. Retry after the API is restored."
+              : "Loading workspace…"}
+          </Empty>
         ) : (
           <fieldset className="workspace" disabled={busy}>
             {(page === "Radar" || page === "Products") && (

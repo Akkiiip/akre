@@ -51,3 +51,5 @@ This is a single-owner, single-workspace foundation. Multi-user OIDC/RBAC, Postg
 - [Scoring, economics and experiment rules](docs/SCORING.md)
 
 Next milestone: credentialed acceptance testing on an INR Shopify development store. Wikimedia attention is not purchasing demand; the live AKRE score remains withheld. Reconcile actual order costs and advertising spend before live profit recommendations.
+
+Vercel deployment: see [root cause, verified fix, environment requirements and DEMO storage limits](docs/VERCEL.md).

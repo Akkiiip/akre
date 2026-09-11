@@ -12,6 +12,7 @@ export function createApp(
     sessionSecret?: string;
     origin?: string;
     staticDir?: string;
+    serverlessDemo?: boolean;
   } = {},
 ) {
   const app = express();
@@ -39,7 +40,9 @@ export function createApp(
     res.setHeader("Cache-Control", "no-store");
     if (!["GET", "HEAD"].includes(req.method)) {
       const origin = req.headers.origin;
-      const allowed = config.origin ?? `http://${req.headers.host}`;
+      const allowed =
+        config.origin ??
+        `${config.serverlessDemo ? "https" : "http"}://${req.headers.host}`;
       if (origin && origin !== allowed) {
         res.status(403).json({ error: "Origin is not allowed" });
         return;
@@ -77,12 +80,18 @@ export function createApp(
     const exp = String(Date.now() + 8 * 60 * 60_000);
     res.setHeader(
       "Set-Cookie",
-      `akre_session=${exp}.${sign(exp)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${config.origin?.startsWith("https:") ? "; Secure" : ""}`,
+      `akre_session=${exp}.${sign(exp)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${config.serverlessDemo || config.origin?.startsWith("https:") ? "; Secure" : ""}`,
     );
     res.json({ ok: true });
   });
   app.get("/api/health", (_req, res) =>
-    res.json({ status: "ok", mode: service.repo.mode }),
+    res.json({
+      status: "ok",
+      mode: service.repo.mode,
+      ...(config.serverlessDemo
+        ? { runtime: "nodejs24.x", storage: "ephemeral", durable: false }
+        : {}),
+    }),
   );
   app.use("/api", (req, res, next) => {
     if (config.password) {
@@ -111,6 +120,16 @@ export function createApp(
   app.get("/api/state", (_req, res) =>
     res.json({
       mode: service.repo.mode,
+      ...(config.serverlessDemo
+        ? {
+            storage: {
+              kind: "ephemeral",
+              durable: false,
+              notice:
+                "Vercel DEMO: temporary instance-local data. Changes can reset and are not shared across instances.",
+            },
+          }
+        : {}),
       data: service.repo.snapshot(),
       integrations: service.integrations(),
     }),
@@ -133,9 +152,12 @@ export function createApp(
   app.post("/api/listings", (req, res) =>
     res.status(201).json(service.createListing(req.body)),
   );
-  app.post("/api/jobs", (req, res) =>
-    res.status(202).json(service.enqueue(req.body)),
-  );
+  app.post("/api/jobs", async (req, res) => {
+    const job = service.enqueue(req.body);
+    // DEMO jobs are bounded local calculations; finish before serverless suspension.
+    if (config.serverlessDemo) await service.runNext();
+    res.status(202).json(service.repo.get("jobs", job.id));
+  });
   app.post("/api/jobs/:id/retry", (req, res) =>
     res.json(service.retry(String(req.params.id))),
   );
@@ -155,6 +177,34 @@ export function createApp(
       res: express.Response,
       _next: express.NextFunction,
     ) => {
+      if (config.serverlessDemo && !(err instanceof z.ZodError)) {
+        const parseError =
+          err instanceof SyntaxError &&
+          "type" in err &&
+          err.type === "entity.parse.failed";
+        const coded = err instanceof Error && "code" in err;
+        const unexpected =
+          coded || err instanceof TypeError || !(err instanceof Error);
+        console.error(
+          JSON.stringify({
+            event: "akre_api_request_failed",
+            type: err instanceof Error ? err.name : "UnknownError",
+            code: coded
+              ? String((err as Error & { code: unknown }).code)
+              : "REQUEST_REJECTED",
+          }),
+        );
+        res
+          .status(parseError ? 400 : unexpected ? 500 : 400)
+          .json({
+            error: parseError
+              ? "Invalid JSON request"
+              : unexpected
+                ? "Backend request failed. Check server logs."
+                : "Request rejected. Check the input, lifecycle state and integration configuration.",
+          });
+        return;
+      }
       const message =
         err instanceof z.ZodError
           ? err.issues

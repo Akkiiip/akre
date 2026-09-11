@@ -1,62 +1,62 @@
-import { Repository } from "../server/database";
-import { Service } from "../server/service";
-import { ShopifyProvider, YouTubeProvider } from "../server/providers";
-import { createApp } from "../server/app";
-
-type ServerState = {
-  app: ReturnType<typeof createApp>;
-  service: Service;
-};
-
-const globalState = globalThis as typeof globalThis & {
-  __akreServer?: ServerState;
-};
-
-function getServer(): ServerState {
-  if (globalState.__akreServer) return globalState.__akreServer;
-
-  const mode = process.env.AKRE_MODE ?? "DEMO";
-  if (mode !== "DEMO" && mode !== "LIVE")
-    throw new Error("AKRE_MODE must be DEMO or LIVE");
-
-  const repo = new Repository(
-    process.env.DATABASE_PATH ?? "/tmp/akre.sqlite",
-    mode,
-  );
-  const service = new Service(
-    repo,
-    new ShopifyProvider({
-      shop: process.env.SHOPIFY_SHOP,
-      token: process.env.SHOPIFY_ADMIN_TOKEN,
-      version: process.env.SHOPIFY_API_VERSION ?? "2026-07",
-    }),
-    new YouTubeProvider(process.env.YOUTUBE_API_KEY),
-  );
-
-  const app = createApp(service, {
-    password: process.env.AKRE_ADMIN_PASSWORD,
-    sessionSecret: process.env.AKRE_SESSION_SECRET,
-    origin: process.env.PUBLIC_ORIGIN,
-  });
-
-  globalState.__akreServer = { app, service };
-  return globalState.__akreServer;
+import type { IncomingMessage, ServerResponse } from "node:http";
+type ServerState = ReturnType<
+  typeof import("../server/vercel-runtime").createVercelServer
+>;
+let server: Promise<ServerState> | undefined;
+function getServer() {
+  // Literal dynamic import is bundled at build time; initialization errors stay inside the request boundary.
+  server ??= import("../server/vercel-runtime")
+    .then(({ createVercelServer }) => createVercelServer())
+    .catch((error) => {
+      server = undefined;
+      throw error;
+    });
+  return server;
 }
-
-export default async function handler(req: any, res: any) {
+export default async function handler(
+  req: IncomingMessage,
+  res: ServerResponse,
+) {
   try {
-    const { app } = getServer();
-    return app(req, res);
+    const { app } = await getServer();
+    app(req, res);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error("AKRE API initialization/request failed", error);
+    const code =
+      error instanceof Error &&
+      "code" in error &&
+      typeof error.code === "string"
+        ? error.code
+        : "INITIALIZATION_FAILED";
+    const configuration =
+      error instanceof Error &&
+      error.name === "Error" &&
+      [
+        "DURABLE_BACKEND_REQUIRED",
+        "INVALID_MODE",
+        "INVALID_AUTH_CONFIG",
+        "INVALID_ORIGIN",
+        "INVALID_DEMO_STORAGE",
+      ].includes(code);
+    console.error(
+      JSON.stringify({
+        event: "akre_api_initialization_failed",
+        code,
+        node: process.version,
+      }),
+    );
     if (!res.headersSent) {
-      res.status(500).json({
-        error: "AKRE backend failed to initialize",
-        detail: message,
-      });
-    } else {
-      res.end();
-    }
+      res.statusCode = 503;
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      res.end(
+        JSON.stringify({
+          error: "AKRE backend unavailable",
+          code,
+          detail: configuration
+            ? (error as Error).message
+            : "Backend initialization failed. Check server logs using the error code.",
+        }),
+      );
+    } else res.end();
   }
 }

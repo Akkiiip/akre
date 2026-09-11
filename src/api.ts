@@ -1,6 +1,7 @@
 import type { Dataset, DataMode } from "../shared/domain";
 export interface AppState {
   mode: DataMode;
+  storage?: { kind: "ephemeral"; durable: false; notice: string };
   data: Dataset;
   integrations: {
     provider: string;
@@ -44,7 +45,10 @@ export async function api<T = unknown>(
   }
 
   if (!response.ok) {
-    const fallback = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    const fallback = raw
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
     const detail = typeof data?.detail === "string" ? data.detail.trim() : "";
     const message =
       typeof data?.error === "string" && data.error.trim()

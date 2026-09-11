@@ -10,7 +10,9 @@ export default defineConfig({
     channel: process.env.PLAYWRIGHT_CHANNEL || undefined,
   },
   webServer: {
-    command: "npm start",
+    command: process.env.AKRE_TEST_VERCEL
+      ? "node tests/vercel/serve.mjs"
+      : "npm start",
     url: "http://127.0.0.1:3101/api/health",
     reuseExistingServer: false,
     env: {
@@ -19,7 +21,10 @@ export default defineConfig({
       DATABASE_PATH: ":memory:",
       AKRE_MODE: "DEMO",
       AKRE_ADMIN_PASSWORD: "",
-      PUBLIC_ORIGIN: "http://127.0.0.1:3101",
+      PUBLIC_ORIGIN: process.env.AKRE_TEST_VERCEL
+        ? ""
+        : "http://127.0.0.1:3101",
+      AKRE_TEST_TLS_PROXY: process.env.AKRE_TEST_VERCEL ? "1" : "0",
     },
     timeout: 60000,
   },

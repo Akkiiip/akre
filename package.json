@@ -11,7 +11,9 @@
     "test": "vitest run tests/unit",
     "test:e2e": "playwright test",
     "preview": "vite preview",
-    "format": "prettier --write src shared server tests docs *.json *.ts README.md .github/workflows/ci.yml"
+    "format": "prettier --write src shared server tests docs *.json *.ts README.md .github/workflows/ci.yml",
+    "build:vercel": "npm run build && node scripts/build-vercel.mjs",
+    "test:vercel": "node --test tests/vercel/function.test.mjs"
   },
   "dependencies": {
     "dotenv": "17.4.2",
@@ -34,9 +36,10 @@
     "prettier": "3.9.6",
     "typescript": "7.0.2",
     "vite": "8.3.0",
-    "vitest": "5.0.0"
+    "vitest": "5.0.0",
+    "esbuild": "0.28.2"
   },
   "engines": {
-    "node": ">=24"
+    "node": "24.x"
   }
 }

@@ -1,12 +1,12 @@
 import type { Repository } from "./database";
 export function migrateIdentityAndScores(repo: Repository) {
-  if (
-    repo.db
-      .prepare("SELECT version FROM schema_migrations WHERE version=2")
-      .get()
-  )
-    return;
   repo.transaction(() => {
+    if (
+      repo.db
+        .prepare("SELECT version FROM schema_migrations WHERE version=2")
+        .get()
+    )
+      return;
     for (const product of repo.list("products")) {
       const observations = repo
         .list("observations")
@@ -54,8 +54,8 @@ export function migrateIdentityAndScores(repo: Repository) {
     repo.db
       .prepare("INSERT INTO schema_migrations VALUES(2,?)")
       .run(new Date().toISOString());
+    repo.db.exec(
+      `CREATE TRIGGER IF NOT EXISTS immutable_evidence_update BEFORE UPDATE ON records WHEN OLD.kind IN ('scoreHistory','audit') BEGIN SELECT RAISE(ABORT,'Historical evidence is append-only'); END; CREATE TRIGGER IF NOT EXISTS immutable_evidence_delete BEFORE DELETE ON records WHEN OLD.kind IN ('scoreHistory','audit') BEGIN SELECT RAISE(ABORT,'Historical evidence is append-only'); END;`,
+    );
   });
-  repo.db.exec(
-    `CREATE TRIGGER IF NOT EXISTS immutable_evidence_update BEFORE UPDATE ON records WHEN OLD.kind IN ('scoreHistory','audit') BEGIN SELECT RAISE(ABORT,'Historical evidence is append-only'); END; CREATE TRIGGER IF NOT EXISTS immutable_evidence_delete BEFORE DELETE ON records WHEN OLD.kind IN ('scoreHistory','audit') BEGIN SELECT RAISE(ABORT,'Historical evidence is append-only'); END;`,
-  );
 }
