@@ -31,7 +31,7 @@ describe("operator supplier quote provider", () => {
     expect(observation.observedAt).toBe(valid.observedAt);
     expect(observation.payload.verificationStatus).toBe("OPERATOR_VERIFIED");
     expect(observation.payload.meaning).toContain("not a purchase");
-    expect(provider.extractSignals([observation], "p1")).toEqual([]);
+    expect(provider.extractSignals()).toEqual([]);
   });
 
   it("rejects incomplete provenance and unsafe economics", () => {
