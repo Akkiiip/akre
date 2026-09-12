@@ -1,13 +1,112 @@
-import type { Express } from "express";
 import { z } from "zod";
+import type { Express } from "express";
 import type { Service } from "./service";
 import { recompute, matchProduct } from "./intelligence";
 import { identityKey } from "../shared/discovery";
+import { GoogleTrendsProvider, googleTrendsInput } from "./google-trends";
+import { runDiscovery } from "./discovery-engine";
+import { ingestionInput, ingestWikimedia } from "./intelligence";
+import type { SyncJob } from "../shared/domain";
+
 export function registerLiveRoutes(app: Express, s: Service) {
-  app.post("/api/discovery/runs", (req, res) => {
-    const input = z.object({ provider: z.literal("wikimedia"), payload: z.record(z.string(), z.unknown()) }).strict().parse(req.body);
-    res.status(202).json(s.enqueue({ type: "TREND_INGESTION", source: input.provider, payload: input.payload }));
+  app.post("/api/discovery/runs", async (req, res) => {
+    const input = z
+      .object({
+        provider: z.enum(["wikimedia", "google-trends"]).optional(),
+        payload: z.record(z.string(), z.unknown()).default({}),
+        runs: z
+          .array(
+            z
+              .object({
+                provider: z.enum(["wikimedia", "google-trends"]),
+                payload: z.record(z.string(), z.unknown()).default({}),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(2)
+          .optional(),
+      })
+      .strict()
+      .refine((v) => Boolean(v.runs?.length || v.provider), "provider or runs is required")
+      .parse(req.body);
+
+    const runs = input.runs ?? [{ provider: input.provider!, payload: input.payload }];
+    const jobs: SyncJob[] = [];
+
+    for (const run of runs) {
+      if (run.provider === "google-trends")
+        googleTrendsInput.parse(run.payload);
+      else ingestionInput.parse(run.payload);
+
+      const job: SyncJob = {
+        ...s.base(),
+        type: "TREND_INGESTION",
+        source: run.provider,
+        payload: run.payload,
+        status: "RUNNING",
+        startedAt: new Date().toISOString(),
+        completedAt: null,
+        error: null,
+        retryCount: 0,
+        requestedBy: "owner",
+      };
+      s.repo.put("jobs", job);
+      s.audit("JOB_STARTED", job.id, {
+        type: job.type,
+        source: job.source,
+        requestBounded: true,
+      });
+      jobs.push(job);
+
+      try {
+        if (run.provider === "google-trends") {
+          await runDiscovery(s, job, new GoogleTrendsProvider());
+        } else {
+          await ingestWikimedia(s, job, s.wikimedia);
+        }
+        s.repo.put("jobs", {
+          ...job,
+          status: "COMPLETED",
+          completedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+        s.audit("JOB_COMPLETED", job.id, {
+          type: job.type,
+          source: job.source,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Discovery run failed";
+        s.repo.put("jobs", {
+          ...job,
+          status: "ERROR",
+          error: message,
+          completedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+        s.audit("JOB_FAILED", job.id, {
+          type: job.type,
+          source: job.source,
+          error: message,
+        });
+        s.audit("DISCOVERY_RUN_FAILED", job.id, {
+          provider: run.provider,
+          error: message,
+        });
+      }
+    }
+
+    const latest = jobs.map((job) => s.repo.get("jobs", job.id));
+    res.status(202).json({
+      jobs: latest,
+      requestBounded: true,
+      evidence: latest.map((job) => ({
+        source: job.source,
+        kind: job.source === "google-trends" ? "DEMAND/SEARCH" : "ATTENTION",
+      })),
+    });
   });
+
   app.get("/api/products/:id/intelligence", (req, res) => {
     const productId = String(req.params.id);
     s.repo.get("products", productId);
@@ -108,7 +207,6 @@ export function registerLiveRoutes(app: Express, s: Service) {
       }),
     );
   });
-  // Ambiguous creates are resolved by importing from Shopify, then linking the confirmed ID.
   app.post("/api/listings/:id/reconcile", (req, res) => {
     const { externalId } = z
       .object({
