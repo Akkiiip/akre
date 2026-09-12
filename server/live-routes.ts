@@ -4,6 +4,10 @@ import type { Service } from "./service";
 import { recompute, matchProduct } from "./intelligence";
 import { identityKey } from "../shared/discovery";
 export function registerLiveRoutes(app: Express, s: Service) {
+  app.post("/api/discovery/runs", (req, res) => {
+    const input = z.object({ provider: z.literal("wikimedia"), payload: z.record(z.string(), z.unknown()) }).strict().parse(req.body);
+    res.status(202).json(s.enqueue({ type: "TREND_INGESTION", source: input.provider, payload: input.payload }));
+  });
   app.get("/api/products/:id/intelligence", (req, res) => {
     const productId = String(req.params.id);
     s.repo.get("products", productId);

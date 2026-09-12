@@ -509,6 +509,7 @@ export class Service {
           updatedAt: new Date().toISOString(),
         });
         this.audit("JOB_FAILED", job!.id, { error: message });
+        if (job!.type === "TREND_INGESTION" || job!.type === "PRODUCT_DISCOVERY") this.audit("DISCOVERY_RUN_FAILED", job!.id, { source: job!.source, error: message });
         if (job!.type === "STORE_SYNC") {
           const listing = this.repo.get(
             "listings",

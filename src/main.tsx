@@ -536,7 +536,8 @@ function Catalogue({
           <Table
             heads={[
               "Product",
-              "Source state",
+              "Source / discovered",
+              "Guidance",
               "AKRE score",
               "Trend index",
               "Demand",
@@ -576,7 +577,9 @@ function Catalogue({
                   </td>
                   <td>
                     <Status value={evidenceState(p, d)} />
+                    <small>{p.source ?? "Unspecified"} · {date(p.discoveredAt ?? p.createdAt)}</small>
                   </td>
+                  <td><Status value={o?.intelligence?.guidance ?? "INSUFFICIENT DATA"} /></td>
                   <td className="score">{number(o?.scoring.score)}</td>
                   <td>{number(o?.inputs.trendAcceleration)}</td>
                   <td>{number(o?.inputs.demandStrength)}</td>

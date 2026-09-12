@@ -1,6 +1,7 @@
 import type { Service } from "./service";
 import type { Product, SourceObservation, SyncJob } from "../shared/domain";
 import { identityKey, aggregateSignals } from "../shared/discovery";
+import { runDiscovery } from "./discovery-engine";
 import { scoreOpportunity, SCORING_VERSION } from "../shared/scoring";
 import { commerceIntelligence, dataFreshness, evidenceQuality, guidance } from "../shared/intelligence";
 import {
@@ -47,6 +48,10 @@ export function upsertIdentity(s: Service, o: SourceObservation) {
       identityKey: identityKey(o.productName),
       lifecycle: "DISCOVERED",
       supplierIds: [],
+      source: o.sourceId,
+      sourceUrl: o.sourceUrl ?? o.reference,
+      mediaUrl: typeof o.payload.mediaUrl === "string" ? o.payload.mediaUrl : null,
+      discoveredAt: o.observedAt,
     }),
     aliases: [...new Set([...(prior?.aliases ?? []), o.productName])],
     sourceReferences: [
@@ -157,63 +162,13 @@ export async function ingestWikimedia(
   job: SyncJob,
   provider = new WikimediaProvider(),
 ) {
-  const input = ingestionInput.parse(job.payload),
-    rows = await provider.fetch(input);
-  if (s.repo.mode !== "LIVE")
-    throw new Error("External ingestion requires the LIVE workspace");
-  s.repo.transaction(() => {
-    s.repo.put("sources", {
-      ...s.base(WIKIMEDIA_SOURCE),
-      name: "Wikimedia pageviews — topic attention",
-      provider: WIKIMEDIA_SOURCE,
-      reference:
-        "https://doc.wikimedia.org/generated-data-platform/aqs/analytics-api/reference/page-views.html",
-      status: "LIVE",
-    });
-    let inserted = 0,
-      unchanged = 0;
-    const products = new Set<string>();
-    for (const row of rows) {
-      const prior = s.repo
-        .list("observations")
-        .find(
-          (o) => o.sourceId === row.sourceId && o.externalId === row.externalId,
-        );
-      if (prior) {
-        if (prior.signalValue !== row.signalValue)
-          throw new Error(
-            "Provider revised a stored observation; explicit revision reconciliation required",
-          );
-        unchanged++;
-      } else {
-        s.repo.put("observations", row);
-        inserted++;
-      }
-      products.add(upsertIdentity(s, row).id);
-    }
-    for (const productId of products) {
-      const p = s.repo.get("products", productId),
-        observations = s.repo
-          .list("observations")
-          .filter(
-            (o) =>
-              o.sourceId === WIKIMEDIA_SOURCE &&
-              (p.sourceReferences ?? []).includes(o.reference ?? ""),
-          );
-      for (const signal of attentionSignals(observations, productId)) {
-        if (!s.repo.list("signals").some((old) => old.id === signal.id))
-          s.repo.put("signals", signal);
-      }
-      recompute(s, productId, "INGESTION");
-    }
-    s.audit("WIKIMEDIA_INGESTED", job.id, {
-      input,
-      received: rows.length,
-      inserted,
-      unchanged,
-      productIds: [...products],
-      region: "GLOBAL",
-      meaning: "Human topic pageviews; no purchase-demand inference",
-    });
+  const result = await runDiscovery(s, job, {
+    id: WIKIMEDIA_SOURCE,
+    evidenceKind: "ATTENTION",
+    validate: (payload) => ingestionInput.parse(payload),
+    fetch: (input) => provider.fetch(input),
+    extractSignals: attentionSignals,
   });
+  s.repo.transaction(() => s.audit("WIKIMEDIA_INGESTED", job.id, { input: ingestionInput.parse(job.payload), meaning: "Human topic pageviews; no purchase-demand inference" }));
+  return result;
 }
