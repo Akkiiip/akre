@@ -1,3 +1,5 @@
+export {};
+
 type EvidenceRow = Record<string, any>;
 type AppState = { mode?: string; data?: { products?: EvidenceRow[]; observations?: EvidenceRow[]; opportunities?: EvidenceRow[]; sources?: EvidenceRow[] } };
 const id = "akre-discovery-layer";
