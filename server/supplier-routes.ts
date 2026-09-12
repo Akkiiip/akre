@@ -1,11 +1,7 @@
 import type { Express } from "express";
 import type { Service } from "./service";
 import { recompute } from "./intelligence";
-import {
-  OperatorSupplierQuoteProvider,
-  supplierOfferFromQuote,
-  supplierQuoteInput,
-} from "./supplier-quote";
+import { OperatorSupplierQuoteProvider, supplierOfferFromQuote } from "./supplier-quote";
 
 export function registerSupplierRoutes(app: Express, service: Service) {
   app.post("/api/supplier-quotes", async (req, res) => {
@@ -14,15 +10,16 @@ export function registerSupplierRoutes(app: Express, service: Service) {
       return;
     }
 
-    const input = new OperatorSupplierQuoteProvider().validate(req.body);
+    const provider = new OperatorSupplierQuoteProvider();
+    const input = provider.validate(req.body);
     const product = service.repo.get("products", input.productId);
     const normalizedName = product.canonicalName ?? product.name;
-    if (input.productName !== normalizedName && !(product.aliases ?? []).includes(input.productName))
+    if (
+      input.productName !== normalizedName &&
+      !(product.aliases ?? []).includes(input.productName)
+    )
       throw new Error("Quote product does not match the selected product identity");
-    if (input.currency !== productWorkspaceCurrency(service))
-      throw new Error(`Quote currency must match workspace currency (${productWorkspaceCurrency(service)})`);
 
-    const provider = new OperatorSupplierQuoteProvider();
     const observation = (await provider.fetch(input))[0];
     const offer = supplierOfferFromQuote(service, input, observation);
 
@@ -35,7 +32,9 @@ export function registerSupplierRoutes(app: Express, service: Service) {
         );
       if (existingObservation) {
         if (JSON.stringify(existingObservation.payload) !== JSON.stringify(observation.payload))
-          throw new Error("Quote reference already exists with different evidence; use a new quote reference");
+          throw new Error(
+            "Quote reference already exists with different evidence; use a new quote reference",
+          );
       } else {
         service.repo.put("observations", observation);
       }
@@ -66,22 +65,15 @@ export function registerSupplierRoutes(app: Express, service: Service) {
 
   app.get("/api/products/:id/supplier-offers", (req, res) => {
     const product = service.repo.get("products", String(req.params.id));
-    const supplierIds = new Set(product.supplierIds);
     res.json({
-      offers: service.repo
-        .list("offers")
-        .filter((offer) => offer.productId === product.id || supplierIds.has(offer.supplierId)),
+      offers: service.repo.list("offers").filter((offer) => offer.productId === product.id),
       observations: service.repo
         .list("observations")
         .filter(
           (observation) =>
             observation.sourceId === "operator-supplier-quote" &&
-            (observation.payload.productId === product.id || observation.productName === product.name),
+            observation.payload.productId === product.id,
         ),
     });
   });
-}
-
-function productWorkspaceCurrency(service: Service) {
-  return service.repo.list("workspaces" as never)[0]?.currency ?? "INR";
 }
