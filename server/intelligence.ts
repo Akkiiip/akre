@@ -164,11 +164,16 @@ export async function ingestWikimedia(
 ) {
   const result = await runDiscovery(s, job, {
     id: WIKIMEDIA_SOURCE,
-    evidenceKind: "ATTENTION",
+    evidenceKinds: ["ATTENTION"],
     validate: (payload) => ingestionInput.parse(payload),
     fetch: (input) => provider.fetch(input),
     extractSignals: attentionSignals,
   });
-  s.repo.transaction(() => s.audit("WIKIMEDIA_INGESTED", job.id, { input: ingestionInput.parse(job.payload), meaning: "Human topic pageviews; no purchase-demand inference" }));
+  s.repo.transaction(() =>
+    s.audit("WIKIMEDIA_INGESTED", job.id, {
+      input: ingestionInput.parse(job.payload),
+      meaning: "Human topic pageviews; no purchase-demand inference",
+    }),
+  );
   return result;
 }
