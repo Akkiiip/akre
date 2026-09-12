@@ -41,8 +41,8 @@ describe("operator supplier quote provider", () => {
     expect(() => supplierQuoteInput.parse({ ...valid, quoteReference: "x" })).toThrow();
   });
 
-  it("requires an explicit quote reference so repeated snapshots do not silently overwrite evidence", async () => {
+  it("requires an explicit quote reference before fetch", () => {
     const provider = new OperatorSupplierQuoteProvider();
-    await expect(provider.fetch(provider.validate({ ...valid, quoteReference: "" }))).rejects.toThrow();
+    expect(() => provider.validate({ ...valid, quoteReference: "" })).toThrow();
   });
 });
