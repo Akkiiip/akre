@@ -8,9 +8,19 @@ import { runDiscovery } from "./discovery-engine";
 import { ingestionInput } from "./wikimedia";
 import { OperatorSupplierQuoteProvider, supplierOfferFromQuote } from "./supplier-quote";
 import { cjSearchInput, searchCjProducts, cjIntegrationStatus } from "./cj-dropshipping";
+import { supplierCatalogSearchInput, searchSupplierCatalogs } from "./supplier-catalogs";
 import type { SyncJob } from "../shared/domain";
 
 export function registerLiveRoutes(app: Express, s: Service) {
+  app.get("/api/suppliers/catalogs", (_req, res) => {
+    res.json({ suppliers: searchSupplierCatalogs({ query: "" }) });
+  });
+
+  app.post("/api/suppliers/catalogs/search", (req, res) => {
+    const input = supplierCatalogSearchInput.parse(req.body);
+    res.json({ suppliers: searchSupplierCatalogs(input) });
+  });
+
   app.get("/api/suppliers/cj/status", (_req, res) => res.json(cjIntegrationStatus()));
 
   app.post("/api/suppliers/cj/search", async (req, res) => {
