@@ -6,6 +6,7 @@ import { identityKey } from "../shared/discovery";
 import { GoogleTrendsProvider, googleTrendsInput } from "./google-trends";
 import { runDiscovery } from "./discovery-engine";
 import { ingestionInput } from "./wikimedia";
+import { OperatorSupplierQuoteProvider, supplierOfferFromQuote } from "./supplier-quote";
 import type { SyncJob } from "../shared/domain";
 
 export function registerLiveRoutes(app: Express, s: Service) {
@@ -106,6 +107,62 @@ export function registerLiveRoutes(app: Express, s: Service) {
     });
   });
 
+  app.post("/api/supplier-quotes", async (req, res) => {
+    if (s.repo.mode !== "LIVE") {
+      res.status(409).json({ error: "Supplier evidence requires the LIVE workspace" });
+      return;
+    }
+    const provider = new OperatorSupplierQuoteProvider();
+    const input = provider.validate(req.body);
+    const product = s.repo.get("products", input.productId);
+    const normalizedName = product.canonicalName ?? product.name;
+    if (
+      input.productName !== normalizedName &&
+      !(product.aliases ?? []).includes(input.productName)
+    )
+      throw new Error("Quote product does not match the selected product identity");
+
+    const observation = (await provider.fetch(input))[0];
+    const offer = supplierOfferFromQuote(s, input, observation);
+    const result = s.repo.transaction(() => {
+      const existingObservation = s.repo
+        .list("observations")
+        .find(
+          (item) =>
+            item.sourceId === provider.id && item.externalId === observation.externalId,
+        );
+      if (existingObservation) {
+        if (JSON.stringify(existingObservation.payload) !== JSON.stringify(observation.payload))
+          throw new Error(
+            "Quote reference already exists with different evidence; use a new quote reference",
+          );
+      } else {
+        s.repo.put("observations", observation);
+      }
+      s.repo.put("offers", offer);
+      s.audit("SUPPLIER_QUOTE_VERIFIED", offer.id, {
+        productId: product.id,
+        supplierId: offer.supplierId,
+        observationId: observation.id,
+        evidenceKinds: [...provider.evidenceKinds],
+        verificationStatus: "OPERATOR_VERIFIED",
+        sourceUrl: input.sourceUrl,
+        observedAt: input.observedAt,
+      });
+      const opportunity = recompute(s, product.id, "SUPPLIER_QUOTE_VERIFIED");
+      return { observation, offer, opportunity };
+    });
+    res.status(201).json({
+      ...result,
+      evidence: {
+        source: provider.id,
+        kinds: [...provider.evidenceKinds],
+        verification: "OPERATOR_VERIFIED",
+        purchaseEvidence: "INSUFFICIENT DATA",
+      },
+    });
+  });
+
   app.get("/api/products/:id/intelligence", (req, res) => {
     const productId = String(req.params.id);
     s.repo.get("products", productId);
@@ -117,6 +174,20 @@ export function registerLiveRoutes(app: Express, s: Service) {
         observations: s.repo.list("observations").filter((item) => item.productName === s.repo.get("products", productId).name),
         signals: s.repo.list("signals").filter((item) => item.productId === productId),
       },
+      supplierOffers: s.repo.list("offers").filter((item) => item.productId === productId),
+    });
+  });
+  app.get("/api/products/:id/supplier-offers", (req, res) => {
+    const product = s.repo.get("products", String(req.params.id));
+    res.json({
+      offers: s.repo.list("offers").filter((offer) => offer.productId === product.id),
+      observations: s.repo
+        .list("observations")
+        .filter(
+          (observation) =>
+            observation.sourceId === "operator-supplier-quote" &&
+            observation.payload.productId === product.id,
+        ),
     });
   });
   app.post("/api/products/:id/recompute", (req, res) => {
