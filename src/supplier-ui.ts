@@ -1,3 +1,5 @@
+export {};
+
 type Supplier = { id:string; name:string; region:string; categories:string[]; capabilities:string[]; integration:string; sourceUrl:string; evidence:{reviewSource:string;reviewSummary:string;rating?:number;reviewCount?:number} };
 const suppliers: Supplier[] = [
   {id:"vfulfill",name:"vFulfill",region:"India",categories:["General","Home","Beauty","Gadgets","Fashion"],capabilities:["Product research","Sourcing","COD","Fulfillment","Shopify"],integration:"SHOPIFY",sourceUrl:"https://apps.shopify.com/vfulfill-cod-dropshipping/reviews",evidence:{reviewSource:"Shopify App Store",reviewSummary:"4.7/5 from 11 reviews",rating:4.7,reviewCount:11}},
