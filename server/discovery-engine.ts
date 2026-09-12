@@ -2,6 +2,7 @@ import type { SourceObservation, SyncJob, TrendSignal } from "../shared/domain";
 import { deduplicate } from "../shared/discovery";
 import type { Service } from "./service";
 import { recompute, upsertIdentity } from "./intelligence";
+import { classifyProductQuery } from "./product-classifier";
 
 export type DiscoveryEvidenceKind =
   | "ATTENTION"
@@ -37,9 +38,23 @@ export async function runDiscovery<TInput>(
   service.repo.transaction(() => {
     let inserted = 0;
     const productIds = new Set<string>();
-    for (const row of rows) {
-      if (row.sourceId !== provider.id)
+    for (const sourceRow of rows) {
+      if (sourceRow.sourceId !== provider.id)
         throw new Error("Discovery provider returned an observation for another source");
+      const classification = classifyProductQuery(sourceRow.productName);
+      const row: SourceObservation = {
+        ...sourceRow,
+        category:
+          classification.classification === "PRODUCT"
+            ? classification.category
+            : sourceRow.category,
+        payload: {
+          ...sourceRow.payload,
+          productClassification: classification.classification,
+          classificationCategory: classification.category,
+          classificationReason: classification.reason,
+        },
+      };
       const prior = service.repo
         .list("observations")
         .find(
@@ -55,7 +70,8 @@ export async function runDiscovery<TInput>(
         service.repo.put("observations", row);
         inserted += 1;
       }
-      productIds.add(upsertIdentity(service, row).id);
+      if (classification.classification !== "NON_PRODUCT")
+        productIds.add(upsertIdentity(service, row).id);
     }
     for (const productId of productIds) {
       const product = service.repo.get("products", productId);
@@ -78,6 +94,7 @@ export async function runDiscovery<TInput>(
       received: rows.length,
       inserted,
       productIds: [...productIds],
+      classification: "Conservative product-intent classification; NON_PRODUCT trends do not become sellable product candidates.",
       meaning: provider.evidenceKinds.includes("ATTENTION")
         ? "Attention evidence only; not purchase demand or purchase proof."
         : provider.evidenceKinds.includes("DEMAND")
