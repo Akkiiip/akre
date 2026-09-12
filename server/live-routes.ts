@@ -7,9 +7,33 @@ import { GoogleTrendsProvider, googleTrendsInput } from "./google-trends";
 import { runDiscovery } from "./discovery-engine";
 import { ingestionInput } from "./wikimedia";
 import { OperatorSupplierQuoteProvider, supplierOfferFromQuote } from "./supplier-quote";
+import { cjSearchInput, searchCjProducts, cjIntegrationStatus } from "./cj-dropshipping";
 import type { SyncJob } from "../shared/domain";
 
 export function registerLiveRoutes(app: Express, s: Service) {
+  app.get("/api/suppliers/cj/status", (_req, res) => res.json(cjIntegrationStatus()));
+
+  app.post("/api/suppliers/cj/search", async (req, res) => {
+    if (s.repo.mode !== "LIVE") {
+      res.status(409).json({ error: "CJ supplier search requires the LIVE workspace" });
+      return;
+    }
+    const input = cjSearchInput.parse(req.body);
+    const result = await searchCjProducts(input);
+    res.json({
+      provider: "cj-dropshipping",
+      keyword: input.keyword,
+      countryCode: input.countryCode,
+      ...result,
+      evidence: {
+        source: "CJ Dropshipping catalog",
+        priceCurrency: "USD",
+        stock: "CJ warehouse inventory",
+        purchaseEvidence: "INSUFFICIENT DATA",
+      },
+    });
+  });
+
   app.post("/api/discovery/runs", async (req, res) => {
     const input = z
       .object({
