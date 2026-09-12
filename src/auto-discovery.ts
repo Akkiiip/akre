@@ -1,3 +1,5 @@
+export {};
+
 const KEY = "akre-live-discovery-v1";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
