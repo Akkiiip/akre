@@ -646,7 +646,7 @@ function ProductDetail({
         <div>
           <div className="smallcaps">{p.category}</div>
           <h3>{p.name}</h3>
-          <p>Updated {date(p.updatedAt)}</p>
+          <p>Discovered {date(p.discoveredAt ?? p.createdAt)} · Updated {date(p.updatedAt)}</p>
         </div>
       </div>
       <div className="detailTabs" role="tablist" aria-label="Product details">
@@ -676,11 +676,23 @@ function ProductDetail({
               </div>
             </div>
             <p className="help">
-              Confidence reports factor coverage, not a statistical probability.
-              Trend index is normalized acceleration, not measured percentage
-              growth.
+              Confidence reports weighted evidence coverage, not a statistical probability. Trend index is normalized acceleration, not measured percentage growth.
             </p>
             <dl>
+              <dt>Testing guidance</dt>
+              <dd>{o?.intelligence?.guidance ?? "INSUFFICIENT DATA"}</dd>
+              <dt>Trend direction</dt>
+              <dd>{o?.intelligence?.trendDirection ?? "INSUFFICIENT DATA"}</dd>
+              <dt>Data freshness</dt>
+              <dd>{o?.intelligence?.dataFreshness ?? "NO EVIDENCE"}</dd>
+              <dt>Evidence quality</dt>
+              <dd>{o?.intelligence?.evidenceQuality == null ? "Insufficient data" : String(o.intelligence.evidenceQuality) + "% source completeness"}</dd>
+              <dt>India fit</dt>
+              <dd>{number(o?.intelligence?.commerce.indiaFit ?? null)}</dd>
+              <dt>Competition</dt>
+              <dd>{number(o?.intelligence?.commerce.competitionLevel ?? null)}</dd>
+              <dt>Estimated gross margin</dt>
+              <dd>{o?.intelligence?.commerce.estimatedGrossMargin == null ? "Insufficient data" : String(o.intelligence.commerce.estimatedGrossMargin) + "% · " + (o.intelligence.commerce.economicsSource === "VERIFIED_SUPPLIER_OFFER" ? "verified quote" : "operator assumptions")}</dd>
               <dt>Selling price</dt>
               <dd>{money(cost?.assumptions.sellingPrice)}</dd>
               <dt>Landed cost</dt>
@@ -696,7 +708,11 @@ function ProductDetail({
                   : "Insufficient data"}
               </dd>
             </dl>
-            <h3>Why this score?</h3>
+            <h3>Why AKRE recommends this outcome</h3>
+            {o?.intelligence?.guidanceReasons.map((reason) => (
+              <p className={o.intelligence?.guidance === "TEST" ? "positive" : "help"} key={reason}>{reason}</p>
+            ))}
+            <h3>Weighted score components</h3>
             {score?.positive.map((s) => (
               <p className="positive" key={s}>
                 {s}
@@ -708,7 +724,7 @@ function ProductDetail({
               </p>
             ))}
             <p className="help">
-              Missing: {score?.missing.map(factorLabel).join(", ") || "None"}
+              Missing score factors: {score?.missing.map(factorLabel).join(", ") || "None"}. Required evidence: {o?.intelligence?.missingDataFlags.join(", ") || "Complete"}
             </p>
             <Table heads={["Component", "Input", "Score", "Weight"]}>
               {score?.components.map((c) => (

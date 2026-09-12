@@ -71,7 +71,7 @@ it("PostgresRepository bootstraps idempotently and durably commits the shared re
     );
   await storage.initialize();
   await storage.initialize();
-  expect(fake.migrations).toEqual(new Set([1, 2]));
+  expect(fake.migrations).toEqual(new Set([1, 2, 3]));
   const first = await storage.openSession();
   expect(first.repo.mode).toBe("LIVE");
   expect(first.repo.list("products")).toEqual([]);

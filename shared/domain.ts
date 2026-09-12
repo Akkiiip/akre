@@ -48,6 +48,10 @@ export interface Product extends Entity {
   identityKey: string;
   lifecycle: Lifecycle;
   supplierIds: ID[];
+  source?: string;
+  sourceUrl?: string | null;
+  mediaUrl?: string | null;
+  discoveredAt?: string;
 }
 export const factors = [
   "trendAcceleration",
@@ -61,6 +65,8 @@ export const factors = [
   "supplierAvailability",
   "marketFit",
   "saturationRisk",
+  "indiaFit",
+  "impulseBuyPotential",
 ] as const;
 export type Factor = (typeof factors)[number];
 export type ScoringInputs = Partial<Record<Factor, number | null>>;
@@ -81,6 +87,7 @@ export interface ScoreResult {
   missing: Factor[];
 }
 export interface ProductOpportunity extends Entity {
+  intelligence?: import("./intelligence").IntelligenceSummary;
   scoreVersion?: string;
   scoredAt?: string;
   productId: ID;

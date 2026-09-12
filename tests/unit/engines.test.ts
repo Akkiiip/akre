@@ -94,11 +94,12 @@ describe("deterministic explainable scoring", () => {
       contentPotential: 0,
       marginPotential: 0,
       marketFit: 0,
+      indiaFit: 0,
       shippingSuitability: 0,
     });
     expect(s.score).toBe(0);
     expect(s.missing).toContain("competition");
-    expect(s.confidence).toBe(66);
+    expect(s.confidence).toBe(65);
   });
   it("requires demand and acceleration even at high coverage", () => {
     const inputs = Object.fromEntries(Object.keys(weights).map((k) => [k, 80]));

@@ -24,6 +24,7 @@ export function ProductCreate({ mutate }: { mutate: Mutate }) {
               sourceName: f.get("source"),
               reference: f.get("reference"),
               note: f.get("note"),
+              mediaUrl: f.get("mediaUrl") || null,
               measurements: measurementsFromForm(f),
             },
             "Source observation saved; discovery queued. Scores stay unavailable until normalized evidence is recorded.",
@@ -50,6 +51,10 @@ export function ProductCreate({ mutate }: { mutate: Mutate }) {
         <label className="field">
           <span>Evidence note</span>
           <textarea name="note" required minLength={3} />
+        </label>
+        <label className="field">
+          <span>Product image / media URL (optional evidence)</span>
+          <input name="mediaUrl" type="url" placeholder="https://…" />
         </label>
         <MeasurementFields />
         <button>Record opportunity</button>

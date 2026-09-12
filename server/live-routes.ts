@@ -4,6 +4,19 @@ import type { Service } from "./service";
 import { recompute, matchProduct } from "./intelligence";
 import { identityKey } from "../shared/discovery";
 export function registerLiveRoutes(app: Express, s: Service) {
+  app.get("/api/products/:id/intelligence", (req, res) => {
+    const productId = String(req.params.id);
+    s.repo.get("products", productId);
+    const opportunity = s.repo.list("opportunities").find((item) => item.productId === productId);
+    res.json({
+      opportunity: opportunity ?? null,
+      scoreHistory: s.repo.list("scoreHistory").filter((item) => item.productId === productId),
+      evidence: {
+        observations: s.repo.list("observations").filter((item) => item.productName === s.repo.get("products", productId).name),
+        signals: s.repo.list("signals").filter((item) => item.productId === productId),
+      },
+    });
+  });
   app.post("/api/products/:id/recompute", (req, res) => {
     z.object({}).strict().parse(req.body);
     res.json(

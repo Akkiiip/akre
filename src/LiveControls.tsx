@@ -421,6 +421,10 @@ export function OpportunityEvidence({
         Canonical: {p.canonicalName ?? p.name} · First seen{" "}
         {p.firstSeen ?? p.createdAt} · Last seen {p.lastSeen ?? p.updatedAt}
       </p>
+      <p className="help">
+        Source: {p.source ?? "Unspecified"} · {p.sourceUrl ? <a href={p.sourceUrl} target="_blank" rel="noreferrer">Product source</a> : "No product source URL"}
+        {p.mediaUrl ? <> · <a href={p.mediaUrl} target="_blank" rel="noreferrer">Media evidence</a></> : null}
+      </p>
       <p className="help">Aliases: {(p.aliases ?? []).join(", ") || "None"}</p>
       {views.length > 0 && (
         <>

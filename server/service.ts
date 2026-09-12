@@ -168,6 +168,8 @@ export class Service {
         assumptions,
         result: economics(assumptions),
       });
+      // Economics are explicit assumptions or a verified quote; preserve that distinction in the new snapshot.
+      recompute(this, productId, "ECONOMICS_UPDATED");
       return cost;
     });
   }

@@ -27,6 +27,7 @@ export function registerCatalogue(app: Express, s: Service) {
         sourceName: text,
         reference,
         note: z.string().trim().min(3).max(10000),
+        mediaUrl: reference.nullable().optional(),
         measurements: z
           .array(
             z
@@ -68,6 +69,10 @@ export function registerCatalogue(app: Express, s: Service) {
           identityKey: key,
           lifecycle: "DISCOVERED",
           supplierIds: [],
+          source: input.sourceName,
+          sourceUrl: input.reference,
+          mediaUrl: input.mediaUrl ?? null,
+          discoveredAt: new Date().toISOString(),
         };
         s.repo.put("products", p);
       }
@@ -91,6 +96,7 @@ export function registerCatalogue(app: Express, s: Service) {
           note: input.note,
           measurements: input.measurements,
           method: "Operator-supplied source and normalization bounds",
+          mediaUrl: input.mediaUrl ?? null,
         },
       };
       s.repo.put("observations", observation);
@@ -187,6 +193,7 @@ export function registerCatalogue(app: Express, s: Service) {
           updatedAt: new Date().toISOString(),
         });
         s.audit("SUPPLIER_OFFER_RECORDED", offer.id, { offer, supplierName });
+        recompute(s, p.id, "SUPPLIER_OFFER_UPDATED");
         return offer;
       }),
     );

@@ -2,6 +2,7 @@ import type { Service } from "./service";
 import type { Product, SourceObservation, SyncJob } from "../shared/domain";
 import { identityKey, aggregateSignals } from "../shared/discovery";
 import { scoreOpportunity, SCORING_VERSION } from "../shared/scoring";
+import { commerceIntelligence, dataFreshness, evidenceQuality, guidance } from "../shared/intelligence";
 import {
   WikimediaProvider,
   ingestionInput,
@@ -93,6 +94,20 @@ export function recompute(
         (p.sourceReferences ?? []).includes(o.reference ?? "") ||
         identityKey(o.productName) === p.identityKey,
     );
+  const cost = s.repo.list("costs").find((item) => item.productId === productId);
+  const supplierOffer = cost?.supplierOfferId
+    ? s.repo.list("offers").find((offer) => offer.id === cost.supplierOfferId)
+    : undefined;
+  const freshness = dataFreshness(all);
+  const commerce = commerceIntelligence(inputs, cost?.assumptions, supplierOffer);
+  const recommendation = guidance(scoring.score, scoring.confidence, inputs, freshness.state, commerce);
+  const intelligence = {
+    ...recommendation,
+    dataFreshness: freshness.state,
+    latestEvidenceAt: freshness.latestEvidenceAt,
+    evidenceQuality: evidenceQuality(observations),
+    commerce,
+  };
   const opportunity = {
     ...(old ?? { ...s.base(), productId, sellingPrice: null, costId: null }),
     sourceIds: [
@@ -104,6 +119,7 @@ export function recompute(
     signalIds: signals.map((sig) => sig.id),
     inputs,
     scoring,
+    intelligence,
     scoreVersion: scoring.version,
     scoredAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -121,6 +137,7 @@ export function recompute(
     evidence: {
       signals,
       observations,
+      intelligence,
       excludedExpiredSignalIds: all
         .filter((sig) => !signals.includes(sig))
         .map((sig) => sig.id),

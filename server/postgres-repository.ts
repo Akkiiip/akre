@@ -49,6 +49,12 @@ const MIGRATIONS = [
     CREATE TRIGGER immutable_evidence_delete BEFORE DELETE ON records FOR EACH ROW EXECUTE FUNCTION akre_preserve_evidence();
   `,
   },
+  {
+    version: 3,
+    sql: `
+    CREATE INDEX IF NOT EXISTS records_intelligence_history ON records(workspace_id, kind, updated_at DESC) WHERE kind IN ('opportunities','scoreHistory');
+  `,
+  },
 ];
 
 function copyDataset(dataset: Dataset): Dataset {
