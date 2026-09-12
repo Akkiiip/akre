@@ -1,5 +1,10 @@
 import { expect, it, vi } from "vitest";
-import { googleTrendsInput, GoogleTrendsProvider, parseApproxTraffic, parseTrendingRss } from "../../server/google-trends";
+import {
+  googleTrendsInput,
+  GoogleTrendsProvider,
+  parseApproxTraffic,
+  parseTrendingRss,
+} from "../../server/google-trends";
 
 const rss = `<?xml version="1.0"?><rss><channel>
 <item>
@@ -31,15 +36,19 @@ it("normalizes public India search-trend observations as DEMAND evidence", () =>
   expect(rows[0].payload.notice).toContain("does not prove product demand");
 });
 
-it("provider has explicit DEMAND capability and preserves duplicate search observations", async () => {
+it("provider has explicit DEMAND capability and turns search traffic into demandStrength", async () => {
   const provider = new GoogleTrendsProvider();
   expect(provider.evidenceKinds).toEqual(["DEMAND"]);
-  const fetcher = vi
-    .spyOn(globalThis, "fetch")
-    .mockResolvedValue(
-      new Response(rss, { status: 200, headers: { "content-type": "application/rss+xml" } }),
-    );
-  const observations = await provider.fetch({ geo: "IN", category: "Kitchen", maxResults: 25 });
+  const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+    ok: true,
+    status: 200,
+    text: async () => rss,
+  } as Response);
+  const observations = await provider.fetch({
+    geo: "IN",
+    category: "Kitchen",
+    maxResults: 25,
+  });
   const signals = provider.extractSignals(observations, "product-1");
   expect(fetcher).toHaveBeenCalledTimes(1);
   expect(signals[0].factor).toBe("demandStrength");
@@ -49,9 +58,13 @@ it("provider has explicit DEMAND capability and preserves duplicate search obser
 
 it("provider surfaces upstream failure instead of inventing demand", async () => {
   const provider = new GoogleTrendsProvider();
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 503 }));
+  const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+    ok: false,
+    status: 503,
+    text: async () => "",
+  } as Response);
   await expect(
     provider.fetch({ geo: "IN", category: "Kitchen", maxResults: 25 }),
   ).rejects.toThrow("Google Trends HTTP 503");
-  vi.restoreAllMocks();
+  fetcher.mockRestore();
 });
