@@ -1,11 +1,11 @@
 import { z } from "zod";
 import type { Express } from "express";
 import type { Service } from "./service";
-import { recompute, matchProduct } from "./intelligence";
+import { recompute, matchProduct, ingestWikimedia } from "./intelligence";
 import { identityKey } from "../shared/discovery";
 import { GoogleTrendsProvider, googleTrendsInput } from "./google-trends";
 import { runDiscovery } from "./discovery-engine";
-import { ingestionInput, ingestWikimedia } from "./intelligence";
+import { ingestionInput } from "./wikimedia";
 import type { SyncJob } from "../shared/domain";
 
 export function registerLiveRoutes(app: Express, s: Service) {
@@ -35,8 +35,7 @@ export function registerLiveRoutes(app: Express, s: Service) {
     const jobs: SyncJob[] = [];
 
     for (const run of runs) {
-      if (run.provider === "google-trends")
-        googleTrendsInput.parse(run.payload);
+      if (run.provider === "google-trends") googleTrendsInput.parse(run.payload);
       else ingestionInput.parse(run.payload);
 
       const job: SyncJob = {
