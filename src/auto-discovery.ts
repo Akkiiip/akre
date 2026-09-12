@@ -1,6 +1,6 @@
 export {};
 
-const KEY = "akre-live-discovery-v1";
+const KEY = "akre-live-discovery-v2";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 async function json(path: string, init?: RequestInit) {
