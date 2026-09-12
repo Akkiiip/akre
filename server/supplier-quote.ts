@@ -30,11 +30,7 @@ export const supplierQuoteInput = z
 
 export type SupplierQuoteInput = z.infer<typeof supplierQuoteInput>;
 
-/**
- * Operator-verified supplier evidence. This intentionally does not scrape a
- * marketplace or infer availability. The operator supplies a source URL and
- * quote details obtained from a supplier.
- */
+/** Operator-supplied evidence; no marketplace scraping or sales inference. */
 export class OperatorSupplierQuoteProvider {
   readonly id = SUPPLIER_QUOTE_SOURCE;
   readonly evidenceKinds = ["SUPPLIER", "SHIPPING", "PRICE"] as const;
@@ -96,6 +92,7 @@ export function supplierOfferFromQuote(
   input: SupplierQuoteInput,
   observation: SourceObservation,
 ): SupplierOffer {
+  const product = service.repo.get("products", input.productId);
   const supplier = service.repo
     .list("suppliers")
     .find(
@@ -112,6 +109,12 @@ export function supplierOfferFromQuote(
       confidence: 1,
     };
   if (!supplier) service.repo.put("suppliers", nextSupplier);
+  if (!(product.supplierIds ?? []).includes(nextSupplier.id))
+    service.repo.put("products", {
+      ...product,
+      supplierIds: [...product.supplierIds, nextSupplier.id],
+      updatedAt: now,
+    });
 
   return {
     ...service.base(),
