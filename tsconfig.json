@@ -10,7 +10,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "types": ["node", "vite/client"]
+    "types": ["node"]
   },
   "include": [
     "src",
