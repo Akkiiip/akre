@@ -20,12 +20,25 @@ async function json(path: string, init?: RequestInit): Promise<any> {
   return body;
 }
 
-function classification(product: Row, observations: Row[]): string {
-  return String(observations.find((item) => item.productName === product.name)?.payload?.productClassification ?? "AMBIGUOUS");
+function productObservationRows(observations: Row[]): Row[] {
+  const live = observations.filter((item) => item.sourceId === "google-trends");
+  const byName = new Map<string, Row>();
+  for (const item of live) {
+    const name = String(item.productName ?? item.payload?.query ?? "").trim();
+    if (!name) continue;
+    const classification = String(item.payload?.productClassification ?? "AMBIGUOUS");
+    const current = byName.get(name);
+    const score = Number(item.signalValue ?? item.payload?.approxTraffic ?? 0);
+    const currentScore = Number(current?.signalValue ?? current?.payload?.approxTraffic ?? 0);
+    if (!current || score > currentScore) {
+      byName.set(name, { ...item, productName: name, payload: { ...(item.payload ?? {}), productClassification: classification } });
+    }
+  }
+  return [...byName.values()].sort((a, b) => Number(b.signalValue ?? 0) - Number(a.signalValue ?? 0));
 }
 
-function observationFor(product: Row, observations: Row[]): Row | undefined {
-  return observations.find((item) => item.productName === product.name);
+function classificationFor(row: Row): string {
+  return String(row.payload?.productClassification ?? "AMBIGUOUS");
 }
 
 function supplierResultsMarkup(local: any, cj: any): string {
@@ -70,18 +83,29 @@ async function render(): Promise<void> {
       const opportunities: Row[] = Array.isArray(data.opportunities) ? data.opportunities : [];
       const offers: Row[] = Array.isArray(data.offers) ? data.offers : [];
       const costs: Row[] = Array.isArray(data.costs) ? data.costs : [];
-      const live = observations.filter((item) => item.sourceId === "google-trends");
-      const candidates = products
-        .filter((product) => live.some((item) => item.productName === product.name) && classification(product, live) === "PRODUCT")
-        .sort((a, b) => Number(observationFor(b, live)?.signalValue ?? 0) - Number(observationFor(a, live)?.signalValue ?? 0));
+      const liveRows = productObservationRows(observations);
+      const strictRows = liveRows.filter((row) => classificationFor(row) === "PRODUCT");
+      const verificationRows = liveRows.filter((row) => classificationFor(row) !== "PRODUCT");
+      const productByName = new Map(products.map((product) => [String(product.name), product]));
+      const candidates = strictRows
+        .map((row) => productByName.get(String(row.productName)))
+        .filter(Boolean) as Row[];
+      candidates.sort((a, b) => {
+        const aRow = strictRows.find((row) => row.productName === a.name);
+        const bRow = strictRows.find((row) => row.productName === b.name);
+        return Number(bRow?.signalValue ?? 0) - Number(aRow?.signalValue ?? 0);
+      });
       const selected = candidates[0];
-      const candidateRows = candidates.length
-        ? candidates.slice(0, 15).map((product, index) => {
-            const observation = observationFor(product, live);
-            const opportunity = opportunities.find((item) => item.productId === product.id);
-            return `<div class="radarCandidate ${index === 0 ? "selected" : ""}"><span class="radarRank">${index + 1}</span><span class="radarCandidateMain"><b>${esc(product.name)}</b><small>${esc(product.category)} · ${Number(observation?.signalValue ?? 0).toLocaleString("en-IN")} approx searches</small></span><span class="radarScore">${esc(opportunity?.scoring?.score ?? "—")}</span><span class="radarStatus">NEW</span></div>`;
+      const selectedObservation = selected ? strictRows.find((row) => row.productName === selected.name) : undefined;
+      const candidateRows = liveRows.length
+        ? liveRows.slice(0, 20).map((row, index) => {
+            const product = productByName.get(String(row.productName));
+            const kind = classificationFor(row);
+            const opportunity = product ? opportunities.find((item) => item.productId === product.id) : undefined;
+            const isProduct = kind === "PRODUCT";
+            return `<div class="radarCandidate ${isProduct && product?.id === selected?.id ? "selected" : ""}"><span class="radarRank">${index + 1}</span><span class="radarCandidateMain"><b>${esc(row.productName)}</b><small>${esc(row.payload?.classificationCategory || product?.category || "Unclassified")} · ${Number(row.signalValue ?? 0).toLocaleString("en-IN")} approx searches</small></span><span class="radarScore">${isProduct ? esc(opportunity?.scoring?.score ?? "—") : "—"}</span><span class="radarStatus">${isProduct ? "PRODUCT" : "VERIFY"}</span></div>`;
           }).join("")
-        : `<div class="empty">No fresh product-intent candidates were returned. Run the live India trend feed.</div>`;
+        : `<div class="empty">No fresh Google Trends signals are loaded yet. Run the live India trend feed.</div>`;
       const selectedOffer = selected ? offers.some((offer) => offer.productId === selected.id) : false;
       const selectedCost = selected ? costs.some((cost) => cost.productId === selected.id) : false;
       const economicsReady = candidates.filter((product) => offers.some((offer) => offer.productId === product.id) && costs.some((cost) => cost.productId === product.id)).length;
@@ -91,23 +115,23 @@ async function render(): Promise<void> {
           <section class="radarHero"><div>
             <div class="smallcaps">COMMERCE COMMAND CENTER · INDIA</div>
             <h2>Fresh products from live search demand</h2>
-            <p>Only products tied to the current Google Trends feed are shown here. Old manual products cannot occupy this discovery list.</p>
+            <p>Every fresh Google Trends query is visible. Confirmed product-intent signals are marked PRODUCT; unresolved commercial signals stay visible as VERIFY instead of being fabricated into products.</p>
             <div class="actions"><button data-refresh>Refresh live India trends</button>${selected ? `<button data-suppliers>Find suppliers for ${esc(selected.name)}</button>` : ""}</div>
           </div><div class="radarGate"><span>PIPELINE</span><b>LIVE TREND</b><i>→</i><b>PRODUCT</b><i>→</i><b>SUPPLIER</b><i>→</i><b>ECONOMICS</b><i>→</i><b>TEST</b></div></section>
           <section class="metrics">
-            <div class="metric"><span>Fresh Google Trends signals</span><strong>${live.length}</strong><small>India · current feed</small></div>
-            <div class="metric"><span>Product candidates</span><strong>${candidates.length}</strong><small>Strict PRODUCT classification</small></div>
-            <div class="metric"><span>Supplier offers</span><strong>${offers.length}</strong><small>Recorded evidence</small></div>
+            <div class="metric"><span>Fresh Google Trends signals</span><strong>${liveRows.length}</strong><small>India · current feed</small></div>
+            <div class="metric"><span>Product candidates</span><strong>${strictRows.length}</strong><small>Confirmed PRODUCT classification</small></div>
+            <div class="metric"><span>Needs verification</span><strong>${verificationRows.length}</strong><small>Visible, not fabricated</small></div>
             <div class="metric"><span>Economics ready</span><strong>${economicsReady}</strong><small>Supplier + cost</small></div>
           </section>
           <div class="contentgrid">
-            <section class="panel"><div class="panelTitle"><h2>New product candidates</h2><span class="badge source-evidence">GOOGLE TRENDS</span></div>${candidateRows}</section>
-            <section class="panel"><div class="panelTitle"><h2>Decision gate</h2><span class="badge">${selected ? "NEW CANDIDATE" : "WAITING"}</span></div>
-              ${selected ? `<div class="radarProductHead"><div class="productIcon">${esc(String(selected.category || "?").slice(0,1))}</div><div><div class="smallcaps">${esc(selected.category)}</div><h3>${esc(selected.name)}</h3><p>LIVE Google Trends → PRODUCT</p></div></div><div class="radarSteps"><div class="radarStep done"><b>01</b><span>Live trend</span><strong>FOUND</strong></div><div class="radarStep done"><b>02</b><span>Product intent</span><strong>PRODUCT</strong></div><div class="radarStep ${selectedOffer ? "done" : "wait"}"><b>03</b><span>Supplier</span><strong>${selectedOffer ? "FOUND" : "MISSING"}</strong></div><div class="radarStep ${selectedCost ? "done" : "wait"}"><b>04</b><span>Economics</span><strong>${selectedCost ? "READY" : "MISSING"}</strong></div><div class="radarStep wait"><b>05</b><span>Test</span><strong>GATED</strong></div></div>` : `<div class="empty">No fresh product candidate is currently available.</div>`}
+            <section class="panel"><div class="panelTitle"><h2>Fresh trend candidates</h2><span class="badge source-evidence">GOOGLE TRENDS · ${liveRows.length}</span></div>${candidateRows}</section>
+            <section class="panel"><div class="panelTitle"><h2>Decision gate</h2><span class="badge">${selected ? "NEW CANDIDATE" : "WAITING FOR PRODUCT INTENT"}</span></div>
+              ${selected ? `<div class="radarProductHead"><div class="productIcon">${esc(String(selected.category || "?").slice(0,1))}</div><div><div class="smallcaps">${esc(selected.category)}</div><h3>${esc(selected.name)}</h3><p>LIVE Google Trends → PRODUCT · ${Number(selectedObservation?.signalValue ?? 0).toLocaleString("en-IN")} approx searches</p></div></div><div class="radarSteps"><div class="radarStep done"><b>01</b><span>Live trend</span><strong>FOUND</strong></div><div class="radarStep done"><b>02</b><span>Product intent</span><strong>PRODUCT</strong></div><div class="radarStep ${selectedOffer ? "done" : "wait"}"><b>03</b><span>Supplier</span><strong>${selectedOffer ? "FOUND" : "MISSING"}</strong></div><div class="radarStep ${selectedCost ? "done" : "wait"}"><b>04</b><span>Economics</span><strong>${selectedCost ? "READY" : "MISSING"}</strong></div><div class="radarStep wait"><b>05</b><span>Test</span><strong>GATED</strong></div></div>` : `<div class="empty">Fresh signals are visible on the left. None is currently classified as a confirmed product, so supplier matching remains gated.</div>`}
             </section>
           </div>
-          <section class="panel radarEvidence"><div class="panelTitle"><h2>Supplier intelligence</h2><span class="badge">EVIDENCE SEPARATED</span></div><div id="${ID}-results"><div class="empty">Find suppliers after a fresh product candidate is available.</div></div></section>
-          <div class="radarFootnote">Search interest is demand evidence, not purchase proof. Supplier research is not live inventory until connected.</div>
+          <section class="panel radarEvidence"><div class="panelTitle"><h2>Supplier intelligence</h2><span class="badge">EVIDENCE SEPARATED</span></div><div id="${ID}-results"><div class="empty">Find suppliers after a confirmed PRODUCT candidate is available.</div></div></section>
+          <div class="radarFootnote">Search interest is demand/attention evidence, not purchase proof. VERIFY rows remain unconfirmed until classification evidence is strong enough.</div>
         </div>`;
 
       root.querySelector("[data-refresh]")?.addEventListener("click", async () => {
